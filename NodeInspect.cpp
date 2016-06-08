@@ -1,18 +1,10 @@
-// Declares clang::SyntaxOnlyAction.
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-// Declares llvm::cl::extrahelp.
-#include "llvm/Support/CommandLine.h"
-
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendAction.h"
+// node format modules
+#include "nodeFormatter.h"
 
 using namespace clang;
 using namespace clang::tooling;
 using namespace llvm;
+using namespace std;
 
 // Apply a custom category to all command-line options so that they are the
 // only ones displayed.
@@ -27,7 +19,7 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp("\nMore help text...");
 
 
-// ---------------------------------------------------------------------------------------------------------------
+// -----------START----------------------------------------------------------------------------------------------------
 
 class TraverseNodeVisitor : public RecursiveASTVisitor<TraverseNodeVisitor> {
 public:
@@ -37,10 +29,12 @@ public:
           llvm::outs() << "this is a TranslationUnitDecl\n";
         } else if (isa<FunctionDecl> (d)) {
           // inner structures
-          FunctionDecl *funcDecl = cast<FunctionDecl> (d);
-          QualType returnType = funcDecl->getReturnType();
-          ArrayRef<ParmVarDecl *> params = funcDecl->parameters();
-          llvm::ArrayRef<ParmVarDecl *>::iterator it;
+          FunctionDeclFormatter fdf(cast<FunctionDecl> (d));
+          // FunctionDecl *funcDecl = cast<FunctionDecl> (d);
+
+          // QualType returnQType = funcDecl->getReturnType();
+          // ArrayRef<ParmVarDecl *> params = funcDecl->parameters();
+          // llvm::ArrayRef<ParmVarDecl *>::iterator it;
 
           // for (it = params.begin(); it != params.end(); it++) {
           //   // doesn't support multiple arg syntax yet
@@ -55,7 +49,7 @@ public:
           // // report findings
           // llvm::outs()
           // << "this is a FunctionDecl: " << funcDecl->getNameAsString() 
-          // << " with return type: " << returnType.getAsString()
+          // << " with return type: " << returnQType.getAsString()
           // << " parameters: ";
           // for (it = params.begin(); it != params.end(); it++) {
           //   // ParmVarDecl *parmvardecl = *it; //iterators work like pointers to container elements.
@@ -64,32 +58,38 @@ public:
           // llvm::outs() << "\n";
 
           // -------------------------------dump Fortran-------------------------------
-          llvm::outs() 
-          << "SUBROUTINE " << funcDecl->getNameAsString()
-          << "(";
-          for (it = params.begin(); it != params.end(); it++) {
-            // doesn't support multiple arg syntax yet
-            llvm::outs() << (*it)->getNameAsString();
-          }
-          llvm::outs() << ") bind (C)\n";
-          for (it = params.begin(); it != params.end(); it++) {
-            // doesn't support multiple arg syntax yet
-            if ((*it)->getOriginalType().getTypePtr()->isPointerType()) {
-              if ((*it)->getOriginalType().getTypePtr()->getPointeeType().getTypePtr()->isIntegerType()) {
-                llvm::outs() << "\tUSE iso_c_binding, only: c_int\n";
-              }
-            }
-          }
-          llvm::outs() << "\tinteger(c_int), VALUE, INTENT(IN) :: ";
-          for (it = params.begin(); it != params.end(); it++) {
-            // doesn't support multiple arg syntax yet
-            llvm::outs() << (*it)->getNameAsString();
-          }
-          llvm::outs() << "\n";
-          llvm::outs() << "END SUBROUTINE " << funcDecl->getNameAsString();
-          llvm::outs() << "\n";
+
+          llvm::outs() << fdf.getParamsNamesASString()
+          << "\n";
+
+          // char * c_type;
+          // llvm::outs() 
+          // << "SUBROUTINE " << funcDecl->getNameAsString()
+          // << "(";
+          // for (it = params.begin(); it != params.end(); it++) {
+          //   // doesn't support multiple arg syntax yet
+          //   llvm::outs() << (*it)->getNameAsString();
+          // }
+          // llvm::outs() << ") bind (C)\n";
+          // for (it = params.begin(); it != params.end(); it++) {
+          //   // doesn't support multiple arg syntax yet
+          //   if ((*it)->getOriginalType().getTypePtr()->isPointerType()) {
+          //     if ((*it)->getOriginalType().getTypePtr()->getPointeeType().getTypePtr()->isIntegerType()) {
+          //       c_type = "c_int";
+          //     }
+          //   }
+          // }
+          // llvm::outs() << "\tUSE iso_c_binding, only: "<< c_type <<"\n";
+          // llvm::outs() << "\tinteger("<< c_type <<"), VALUE, INTENT(IN) :: ";
+          // for (it = params.begin(); it != params.end(); it++) {
+          //   // doesn't support multiple arg syntax yet
+          //   llvm::outs() << (*it)->getNameAsString();
+          // }
+          // llvm::outs() << "\n";
+          // llvm::outs() << "END SUBROUTINE " << funcDecl->getNameAsString();
+          // llvm::outs() << "\n";
           // -------------------------------dump Fortran-------------------------------
-          
+
 
         } else if (isa<ParmVarDecl> (d)) {
           ParmVarDecl *parmvardecl = cast<ParmVarDecl> (d);
@@ -97,6 +97,7 @@ public:
         } else {
           llvm::outs() << "found declaration \n";
         }
+
         RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d); // Forward to base class
         return true; // Return false to stop the AST analyzing
     }
