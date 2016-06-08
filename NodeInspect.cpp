@@ -28,13 +28,8 @@ public:
           // tranlastion unit decl is the top node of all AST, ignore the inner structure of tud for now
           llvm::outs() << "this is a TranslationUnitDecl\n";
         } else if (isa<FunctionDecl> (d)) {
-          // inner structures
+          // create formatter
           FunctionDeclFormatter fdf(cast<FunctionDecl> (d));
-          // FunctionDecl *funcDecl = cast<FunctionDecl> (d);
-
-          // QualType returnQType = funcDecl->getReturnType();
-          // ArrayRef<ParmVarDecl *> params = funcDecl->parameters();
-          // llvm::ArrayRef<ParmVarDecl *>::iterator it;
 
           // for (it = params.begin(); it != params.end(); it++) {
           //   // doesn't support multiple arg syntax yet
@@ -59,7 +54,7 @@ public:
 
           // -------------------------------dump Fortran-------------------------------
 
-          llvm::outs() << fdf.getParamsNamesASString()
+          llvm::outs() << fdf.getFortranFunctDeclASString()
           << "\n";
 
           // char * c_type;
