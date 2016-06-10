@@ -91,14 +91,31 @@ public:
           // -------------------------------dump Fortran-------------------------------
 
 
-        } else if (isa<ParmVarDecl> (d)) {
-          ParmVarDecl *parmvardecl = cast<ParmVarDecl> (d);
-          llvm::outs() << "found ParmVarDecl: " << parmvardecl->getNameAsString() << "\n";
         } else if (isa<TypedefDecl> (d)) {
           //TypedefDecl *tdd = cast<TypedefDecl> (d);
           llvm::outs() << "found TypedefDecl \n";
+        } else if (isa<RecordDecl> (d)) {
+          RecordDecl *recordDecl = cast<RecordDecl> (d);
+          // struct name: recordDecl->getNameAsString()
+          if (!recordDecl->field_empty()) {
+            for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
+              llvm::outs() << "identifier:" <<(*it)->getNameAsString() 
+              << " type: " << (*it)->getType().getAsString()<< "\n";
+            }
+          }
+          
+          llvm::outs() << "found RecordDecl " << recordDecl->getNameAsString() + "\n";
+        } else if (isa<VarDecl> (d)) {
+          VarDecl *varDecl = cast<VarDecl> (d);
+          // name: myType
+          // type: struct MyType (or a loc identifier)
+          llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
+          << " type: " << varDecl->getType().getAsString() << "\n";
+        } else if (isa<EnumDecl> (d)) {
+          EnumDecl *enumDecl = cast<EnumDecl> (d);
+          llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
         } else {
-          llvm::outs() << "found declaration \n";
+          llvm::outs() << "found other declaration \n";
         }
 
         RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d); // Forward to base class
@@ -113,7 +130,7 @@ public:
         return true;
     }
     bool TraverseType(QualType x) {
-        llvm::outs() << "found type \n";
+        llvm::outs() << "found type " << x.getAsString() << "\n";
         x->dump();
         RecursiveASTVisitor<TraverseNodeVisitor>::TraverseType(x);
         return true;

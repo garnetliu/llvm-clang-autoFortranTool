@@ -85,13 +85,30 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
 	return f_type;
 };
 
+class RecordDeclFormatter {
+public:
+	RecordDecl *recordDecl;
+
+	// Member functions declarations
+	RecordDeclFormatter(RecordDecl *r);
+
+// private:
+// 	llvm::ArrayRef<ParmVarDecl *> params;
+};
+
+RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
+	recordDecl = r;
+};
+
+
+
 
 class FunctionDeclFormatter {
 public:
 	FunctionDecl *funcDecl;
 
 	// Member functions declarations
-	FunctionDeclFormatter(FunctionDecl *funcDecl);
+	FunctionDeclFormatter(FunctionDecl *f);
 	string getParamsNamesASString();
 	string getParamsDeclASString();
 	string getFortranFunctDeclASString();
@@ -146,23 +163,23 @@ string FunctionDeclFormatter::getParamsTypesASString() {
 	return paramsType;
 }
 
-string FunctionDeclFormatter::getParamsDeclASString() {
+string FunctionDeclFormatter::getParamsDeclASString() { 
 	string paramsDecl;
 	for (auto it = params.begin(); it != params.end(); it++) {
 		CToFTypeFormatter tf((*it)->getOriginalType());
-		//type handler
+		// in some cases parameter doesn't have a name
 		paramsDecl += "\t" + tf.getFortranTypeASString(true) + ", value" + " :: " + (*it)->getNameAsString() + "\n"; // need to handle the attribute later
 	}
 	return paramsDecl;
 }
 
-string FunctionDeclFormatter::getParamsNamesASString() {
+string FunctionDeclFormatter::getParamsNamesASString() { 
 	string paramsNames;
 	for (auto it = params.begin(); it != params.end(); it++) {
 	  if (it == params.begin()) {
 	    paramsNames += (*it)->getNameAsString();
 	  } else { // parameters in between
-	    paramsNames += ", " + (*it)->getNameAsString();
+	    paramsNames += ", " + (*it)->getNameAsString(); // in some cases parameter doesn't have a name
 	  }
 	}
 	return paramsNames;
