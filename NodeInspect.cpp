@@ -30,16 +30,21 @@ public:
         } else if (isa<FunctionDecl> (d)) {
           // create formatter
           FunctionDeclFormatter fdf(cast<FunctionDecl> (d));
+          // llvm::ArrayRef<ParmVarDecl *> params = fdf.funcDecl->parameters();
+          // type checking
+          // for (auto it = params.begin(); it != params.end(); it++) {
+          //   // if ((*it)->getOriginalType().getTypePtr()->isPointerType()) {
+          //   //   llvm::outs() << "PTR TYPE\n";
+          //   //   if ((*it)->getOriginalType().getTypePtr()->isFunctionPointerType()) {
+          //   //     llvm::outs() << "FUNC * TYPE\n";
+          //   //   }
+          //   //   if ((*it)->getOriginalType().getTypePtr()->getPointeeType().getTypePtr()->isIntegerType()) {
+          //   //     llvm::outs() << "INT * TYPE\n";
+          //   //   }
+          //   llvm::outs() << (*it)->getOriginalType().getAsString();
 
-          // for (it = params.begin(); it != params.end(); it++) {
-          //   // doesn't support multiple arg syntax yet
-          //   if ((*it)->getOriginalType().getTypePtr()->isPointerType()) {
-          //     llvm::outs() << "PTR TYPE\n";
-          //     if ((*it)->getOriginalType().getTypePtr()->getPointeeType().getTypePtr()->isIntegerType()) {
-          //       llvm::outs() << "INT * TYPE\n";
-          //     }
           //   }
-          // }
+          
 
           // // report findings
           // llvm::outs()
@@ -89,6 +94,9 @@ public:
         } else if (isa<ParmVarDecl> (d)) {
           ParmVarDecl *parmvardecl = cast<ParmVarDecl> (d);
           llvm::outs() << "found ParmVarDecl: " << parmvardecl->getNameAsString() << "\n";
+        } else if (isa<TypedefDecl> (d)) {
+          //TypedefDecl *tdd = cast<TypedefDecl> (d);
+          llvm::outs() << "found TypedefDecl \n";
         } else {
           llvm::outs() << "found declaration \n";
         }
@@ -134,49 +142,17 @@ public:
   }
 };
 
-// class FindNamedClassVisitor : public RecursiveASTVisitor<FindNamedClassVisitor> {
-// public:
-//   explicit FindNamedClassVisitor(ASTContext *Context)
-//     : Context(Context) {}
-
-//   bool VisitCXXRecordDecl(CXXRecordDecl *Declaration) {
-//     if (Declaration->getQualifiedNameAsString() == "n::m::C") {
-//       FullSourceLoc FullLocation = Context->getFullLoc(Declaration->getLocStart());
-//       if (FullLocation.isValid())
-//         llvm::outs() << "Found declaration at "
-//                      << FullLocation.getSpellingLineNumber() << ":"
-//                      << FullLocation.getSpellingColumnNumber() << "\n";
-//     }
-//     return true;
-//   }
-
-// private:
-//   ASTContext *Context;
-// };
-
-// class FindNamedClassConsumer : public clang::ASTConsumer {
-// public:
-//   explicit FindNamedClassConsumer(ASTContext *Context)
-//     : Visitor(Context) {}
-
-//   virtual void HandleTranslationUnit(clang::ASTContext &Context) {
-//     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
-//   }
-// private:
-//   FindNamedClassVisitor Visitor;
-// };
-
-// class FindNamedClassAction : public clang::ASTFrontendAction {
-// public:
-//   virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-//     clang::CompilerInstance &Compiler, llvm::StringRef InFile) {
-//     return std::unique_ptr<clang::ASTConsumer>(
-//         new FindNamedClassConsumer(&Compiler.getASTContext()));
-//   }
-// };
-
-int main(int argc, char **argv) {
-  if (argc > 1) {
+int main(int argc, const char **argv) {
+  if (argc == 2) {
+    CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
+    ClangTool Tool(OptionsParser.getCompilations(),
+                  OptionsParser.getSourcePathList());
+    return Tool.run(newFrontendActionFactory<TraverseNodeAction>().get());
+  } else if (argc == 3) {
     clang::tooling::runToolOnCode(new TraverseNodeAction, argv[1]);
+  } else {
+    llvm::outs() 
+    << "USAGE: ~/clang-llvm/build/bin/node-inspect <PATH> OR"
+    << "~/clang-llvm/build/bin/node-inspect <CODE> inline";
   }
 }
