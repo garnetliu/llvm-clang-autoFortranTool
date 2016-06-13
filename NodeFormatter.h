@@ -10,6 +10,11 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
+#include "clang/Frontend/CompilerInstance.h"
+
+// lexer
+#include "clang/Lex/Lexer.h"
+
 
 
 #include <stdio.h>
@@ -117,6 +122,7 @@ public:
 private:
 	QualType returnQType;
 	llvm::ArrayRef<ParmVarDecl *> params;
+	//SourceManager &srcMgr;
 };
 
 // member function definitions
@@ -124,6 +130,7 @@ FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f) {
 	funcDecl = f;
 	returnQType = funcDecl->getReturnType();
 	params = funcDecl->parameters();
+	//srcMgr = sm;
 };
 
 string FunctionDeclFormatter::getParamsTypesASString() {
@@ -165,22 +172,42 @@ string FunctionDeclFormatter::getParamsTypesASString() {
 
 string FunctionDeclFormatter::getParamsDeclASString() { 
 	string paramsDecl;
+	int index = 0;
 	for (auto it = params.begin(); it != params.end(); it++) {
+		// if the param name is empty, rename it to arg_index
+		string pname = (*it)->getNameAsString();
+		if (pname.empty()) {
+			pname = "arg_" + to_string(index);
+		}
+		
 		CToFTypeFormatter tf((*it)->getOriginalType());
 		// in some cases parameter doesn't have a name
-		paramsDecl += "\t" + tf.getFortranTypeASString(true) + ", value" + " :: " + (*it)->getNameAsString() + "\n"; // need to handle the attribute later
+		paramsDecl += "\t" + tf.getFortranTypeASString(true) + ", value" + " :: " + pname + "\n"; // need to handle the attribute later
+		index ++;
 	}
 	return paramsDecl;
 }
 
 string FunctionDeclFormatter::getParamsNamesASString() { 
 	string paramsNames;
+	int index = 0;
 	for (auto it = params.begin(); it != params.end(); it++) {
 	  if (it == params.begin()) {
-	    paramsNames += (*it)->getNameAsString();
+		// if the param name is empty, rename it to arg_index
+		string pname = (*it)->getNameAsString();
+		if (pname.empty()) {
+			pname = "arg_" + to_string(index);
+		}
+	    paramsNames += pname;
 	  } else { // parameters in between
-	    paramsNames += ", " + (*it)->getNameAsString(); // in some cases parameter doesn't have a name
+		// if the param name is empty, rename it to arg_index
+		string pname = (*it)->getNameAsString();
+		if (pname.empty()) {
+			pname = "arg_" + to_string(index);
+		}
+	    paramsNames += ", " + pname; 
 	  }
+	  index ++;
 	}
 	return paramsNames;
 };
@@ -200,6 +227,18 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
 	fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
 	fortanFunctDecl += "\t" + imports + "\n";
 	fortanFunctDecl += getParamsDeclASString();
+	// // preserve the function body as comment
+	// if (funcDecl->hasBody()) {
+	// 	Stmt *stmt = funcDecl->getBody();
+	// 	clang::SourceManager &sm = ;
+	// 	llvm::outs() << "reached here\n";
+	// 	string text = Lexer::getSourceText(CharSourceRange::getTokenRange(stmt->getSourceRange()), *sm, LangOptions(), 0);
+	//     // if (text.at(text.size()-1) == ',') {
+	//     //     text = Lexer::getSourceText(CharSourceRange::getCharRange(stmt->getSourceRange()), sm, LangOptions(), 0);
+	//     // }
+	//     fortanFunctDecl += text;
+
+	// }
 	fortanFunctDecl += "END " + funcType + " " + funcDecl->getNameAsString() + "\n";
 
 
