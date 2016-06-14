@@ -24,10 +24,6 @@ using namespace clang;
 using namespace clang::tooling;
 using namespace llvm;
 using namespace std;
-using namespace clang;
-using namespace clang::tooling;
-using namespace llvm;
-using namespace std;
 
 // Apply a custom category to all command-line options so that they are the
 // only ones displayed.
@@ -50,6 +46,41 @@ public:
   string getFortranTypeASString(bool typeWrapper);
   bool isSameType(QualType qt2);
 };
+
+class RecordDeclFormatter {
+public:
+  RecordDecl *recordDecl;
+
+  // Member functions declarations
+  RecordDeclFormatter(RecordDecl *r);
+
+// private:
+//  llvm::ArrayRef<ParmVarDecl *> params;
+};
+
+RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
+  recordDecl = r;
+};
+
+
+class FunctionDeclFormatter {
+public:
+  FunctionDecl *funcDecl;
+
+  // Member functions declarations
+  FunctionDeclFormatter(FunctionDecl *f, Rewriter &r);
+  string getParamsNamesASString();
+  string getParamsDeclASString();
+  string getFortranFunctDeclASString();
+  string getParamsTypesASString();
+
+private:
+  QualType returnQType;
+  llvm::ArrayRef<ParmVarDecl *> params;
+  Rewriter &rewriter;
+};
+
+// member function definitions
 
 CToFTypeFormatter::CToFTypeFormatter(QualType qt) {
   c_qualType = qt;
@@ -106,40 +137,8 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
   return f_type;
 };
 
-class RecordDeclFormatter {
-public:
-  RecordDecl *recordDecl;
-
-  // Member functions declarations
-  RecordDeclFormatter(RecordDecl *r);
-
-// private:
-//  llvm::ArrayRef<ParmVarDecl *> params;
-};
-
-RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
-  recordDecl = r;
-};
 
 
-class FunctionDeclFormatter {
-public:
-  FunctionDecl *funcDecl;
-
-  // Member functions declarations
-  FunctionDeclFormatter(FunctionDecl *f, Rewriter &r);
-  string getParamsNamesASString();
-  string getParamsDeclASString();
-  string getFortranFunctDeclASString();
-  string getParamsTypesASString();
-
-private:
-  QualType returnQType;
-  llvm::ArrayRef<ParmVarDecl *> params;
-  Rewriter &rewriter;
-};
-
-// member function definitions
 FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rewriter(r) {
   funcDecl = f;
   returnQType = funcDecl->getReturnType();
@@ -185,7 +184,7 @@ string FunctionDeclFormatter::getParamsTypesASString() {
 
 string FunctionDeclFormatter::getParamsDeclASString() { 
   string paramsDecl;
-  int index = 0;
+  int index = 1;
   for (auto it = params.begin(); it != params.end(); it++) {
     // if the param name is empty, rename it to arg_index
     string pname = (*it)->getNameAsString();
@@ -242,7 +241,6 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
   fortanFunctDecl += getParamsDeclASString();
   // preserve the function body as comment
   if (funcDecl->hasBody()) {
-    outs()<<"function has a body\n";
     Stmt *stmt = funcDecl->getBody();
     clang::SourceManager &sm = rewriter.getSourceMgr();
     // comment out the entire function {!body...}
@@ -263,26 +261,7 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
 
 
 //------------helper methods----------------------------------------------------------------------------------------------------
-// const clang::Decl* get_DeclContext_from_Stmt(const clang::Stmt& stmt)
-// {
-//   auto it = ASTContext->getParents(stmt).begin();
 
-//   if(it == ASTContext->getParents(stmt).end()) {
-//     return nullptr;
-//   }
-
-//   const clang::Decl *aDecl = it->get<clang::Decl>();
-//   if (aDecl) {
-//     return aDecl;
-//   }
-
-//   const clang::Stmt *aStmt = it->get<clang::Stmt>();
-//   if(aStmt) {
-//     return get_DeclContext_from_Stmt(*aStmt);
-//   }
-
-//   return nullptr;
-// }
 //-----------the program----------------------------------------------------------------------------------------------------
 
 class TraverseNodeVisitor : public RecursiveASTVisitor<TraverseNodeVisitor> {
@@ -292,24 +271,34 @@ public:
 
   bool TraverseDecl(Decl *d) {
     if (isa<TranslationUnitDecl> (d)) {
-          // tranlastion unit decl is the top node of all AST, ignore the inner structure of tud for now
+      // tranlastion unit decl is the top node of all AST, ignore the inner structure of tud for now
       llvm::outs() << "this is a TranslationUnitDecl\n";
       RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
     } else if (isa<FunctionDecl> (d)) {
           // create formatter
       FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
-
-          // -------------------------------dump Fortran-------------------------------
-
+      // -------------------------------dump Fortran-------------------------------
       llvm::outs() << fdf.getFortranFunctDeclASString()
       << "\n";
 
     } else if (isa<TypedefDecl> (d)) {
-          //TypedefDecl *tdd = cast<TypedefDecl> (d);
+      //TypedefDecl *tdd = cast<TypedefDecl> (d);
       llvm::outs() << "found TypedefDecl \n";
     } else if (isa<RecordDecl> (d)) {
-      RecordDecl *recordDecl = cast<RecordDecl> (d);
-          // struct name: recordDecl->getNameAsString()
+      // struct
+      RecordDeclFormatter rdf(cast<RecordDecl> (d));
+      RecordDecl *recordDecl = rdf.recordDecl;
+      // struct name: recordDecl->getNameAsString()
+      // type,bind(c): (*it)->getNameAsString() if empty chang to (*it)->getType().getAsString()
+      // type(c_type) :: var1, var2...
+      // end type
+
+      if ((cast<RecordDecl> (d))->isAnonymousStructOrUnion()) {
+        llvm::outs() << "is Anonymous\n"; 
+      } else {
+        llvm::outs() << "is not Anonymous\n"; 
+      }
+
       if (!recordDecl->field_empty()) {
         for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
           llvm::outs() << "identifier:" <<(*it)->getNameAsString() 
@@ -318,6 +307,8 @@ public:
       }
 
       llvm::outs() << "found RecordDecl " << recordDecl->getNameAsString() + "\n";
+
+      //RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
     } else if (isa<VarDecl> (d)) {
       VarDecl *varDecl = cast<VarDecl> (d);
           // name: myType
@@ -390,15 +381,16 @@ private:
 };
 
 int main(int argc, const char **argv) {
-  if (argc == 2) {
+  if (argc > 1) {
     CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
     ClangTool Tool(OptionsParser.getCompilations(), OptionsParser.getSourcePathList());
     return Tool.run(newFrontendActionFactory<TraverseNodeAction>().get());
-  } else if (argc == 3) {
-    clang::tooling::runToolOnCode(new TraverseNodeAction, argv[1]);
-  } else {
-    llvm::outs() 
-    << "USAGE: ~/clang-llvm/build/bin/node-inspect <PATH> OR "
-    << "~/clang-llvm/build/bin/node-inspect <CODE> inline";
   }
+  //  else if (argc == 3) {
+  //   clang::tooling::runToolOnCode(new TraverseNodeAction, argv[1]);
+  // } else {
+  //   llvm::outs() 
+  //   << "USAGE: ~/clang-llvm/build/bin/node-inspect <PATH> OR "
+  //   << "~/clang-llvm/build/bin/node-inspect <CODE> inline";
+  // }
 }
