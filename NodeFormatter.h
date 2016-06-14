@@ -12,8 +12,9 @@
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/CompilerInstance.h"
 
-// lexer
+// lexer and writer
 #include "clang/Lex/Lexer.h"
+#include "clang/Rewrite/Core/Rewriter.h"
 
 
 
