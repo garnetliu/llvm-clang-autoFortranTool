@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <string>
+#include <sstream>
 
 using namespace clang;
 using namespace clang::tooling;
@@ -143,7 +144,6 @@ FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rew
   funcDecl = f;
   returnQType = funcDecl->getReturnType();
   params = funcDecl->parameters();
-  //srcMgr = sm;
 };
 
 string FunctionDeclFormatter::getParamsTypesASString() {
@@ -240,18 +240,21 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
   fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
   fortanFunctDecl += "\t" + imports + "\n";
   fortanFunctDecl += getParamsDeclASString();
-  // // preserve the function body as comment
-  // if (funcDecl->hasBody()) {
-  //  Stmt *stmt = funcDecl->getBody();
-  //  clang::SourceManager &sm = ;
-  //  llvm::outs() << "reached here\n";
-  //  string text = Lexer::getSourceText(CharSourceRange::getTokenRange(stmt->getSourceRange()), *sm, LangOptions(), 0);
-  //     // if (text.at(text.size()-1) == ',') {
-  //     //     text = Lexer::getSourceText(CharSourceRange::getCharRange(stmt->getSourceRange()), sm, LangOptions(), 0);
-  //     // }
-  //     fortanFunctDecl += text;
+  // preserve the function body as comment
+  if (funcDecl->hasBody()) {
+    outs()<<"function has a body\n";
+    Stmt *stmt = funcDecl->getBody();
+    clang::SourceManager &sm = rewriter.getSourceMgr();
+    // comment out the entire function {!body...}
+    string bodyText = Lexer::getSourceText(CharSourceRange::getTokenRange(stmt->getSourceRange()), sm, LangOptions(), 0);
+    string commentedBody = "! comment out function body by default \n";
+    std::istringstream in(bodyText);
+    for (std::string line; std::getline(in, line);) {
+      commentedBody += "! " + line + "\n";
+    }
+    fortanFunctDecl += commentedBody;
 
-  // }
+  }
   fortanFunctDecl += "END " + funcType + " " + funcDecl->getNameAsString() + "\n";
 
 
