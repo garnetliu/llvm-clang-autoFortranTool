@@ -50,17 +50,28 @@ public:
 class RecordDeclFormatter {
 public:
   RecordDecl *recordDecl;
+  int mode = ANONYMOUS;
+  bool structOrUnion = STRUCT;
+
+  const int ANONYMOUS = 0;
+  const int ID_ONLY = 1;
+  const int TAG_ONLY = 2;
+  const int ID_TAG = 3;
+  const int UNION = 0;
+  const int STRUCT = 1;
 
   // Member functions declarations
   RecordDeclFormatter(RecordDecl *r);
+  void setMode(int m);
+  bool isStruct();
+  bool isUnion();
+  string getFortranStructASString();
+  string getFortranFields();
 
 // private:
-//  llvm::ArrayRef<ParmVarDecl *> params;
+  
 };
 
-RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
-  recordDecl = r;
-};
 
 
 class FunctionDeclFormatter {
@@ -81,6 +92,71 @@ private:
 };
 
 // member function definitions
+
+RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
+  recordDecl = r;
+};
+
+bool RecordDeclFormatter::isStruct() {
+  return structOrUnion == STRUCT;
+};
+
+bool RecordDeclFormatter::isUnion() {
+  return structOrUnion == UNION;
+};
+
+string RecordDeclFormatter::getFortranFields() {
+  string fieldsInFortran = "";
+  if (!recordDecl->field_empty()) {
+    for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
+      CToFTypeFormatter tf((*it)->getType());
+      string identifier = (*it)->getNameAsString();
+
+      fieldsInFortran += "\t" + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
+
+      // llvm::outs() << "identifier:" <<(*it)->getNameAsString() 
+      // << " type: " << (*it)->getType().getAsString()<< "\n";
+    }
+  }
+  return fieldsInFortran;
+}
+
+string RecordDeclFormatter::getFortranStructASString() {
+  // struct name: recordDecl->getNameAsString()
+  // type,bind(c): (*it)->getNameAsString() if empty chang to (*it)->getType().getAsString()
+  // type(c_type) :: var1, var2...
+  // end type
+
+  string rd_buffer;
+
+  if (mode == ID_ONLY) {
+    string identifier = "struct " + recordDecl->getNameAsString();
+    string fieldsInFortran = getFortranFields();
+
+    rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";
+    
+  }
+
+  return rd_buffer;
+
+};
+
+void RecordDeclFormatter::setMode(int m) {
+  // int ANONYMOUS = 0;
+  // int ID_ONLY = 1;
+  // int TAG_ONLY = 2;
+  // int ID_TAG = 3;
+
+  if (mode == ID_ONLY and m == TAG_ONLY) {
+    mode = ID_TAG;
+  } else if (mode == TAG_ONLY and m == ID_ONLY) {
+    mode = ID_TAG;
+  } else {
+    mode = m;
+  }
+  llvm::outs() << "setmode: " << to_string(m) << " current mode: " << to_string(mode) << "\n";
+
+};
 
 CToFTypeFormatter::CToFTypeFormatter(QualType qt) {
   c_qualType = qt;
@@ -158,6 +234,30 @@ string FunctionDeclFormatter::getParamsTypesASString() {
       paramsType = tf.getFortranTypeASString(false);
       first = false;
       //llvm::outs() << "first arg " << (*it)->getOriginalType().getAsString() + "\n";
+
+
+      // add the return type too
+      CToFTypeFormatter rtf(returnQType);
+      if (!returnQType.getTypePtr()->isVoidType()) {
+        if (rtf.isSameType(prev_qt)) {
+          //llvm::outs() << "same type as previous" << (*it)->getOriginalType().getAsString() + "\n";
+        } else {
+          // check if type is in the vector
+          bool add = true;
+          for (auto v = qts.begin(); v != qts.end(); v++) {
+            if (rtf.isSameType(*v)) {
+              add = false;
+            }
+          }
+          if (add) {
+            paramsType += (", " + rtf.getFortranTypeASString(false));
+          }
+          //llvm::outs() << "different type as previous" << (*it)->getOriginalType().getAsString() + "\n";
+        }
+        prev_qt = returnQType;
+        qts.push_back(prev_qt);
+      }
+
     } else {
       CToFTypeFormatter tf((*it)->getOriginalType());
       if (tf.isSameType(prev_qt)) {
@@ -288,25 +388,31 @@ public:
       // struct
       RecordDeclFormatter rdf(cast<RecordDecl> (d));
       RecordDecl *recordDecl = rdf.recordDecl;
-      // struct name: recordDecl->getNameAsString()
-      // type,bind(c): (*it)->getNameAsString() if empty chang to (*it)->getType().getAsString()
-      // type(c_type) :: var1, var2...
-      // end type
 
-      if ((cast<RecordDecl> (d))->isAnonymousStructOrUnion()) {
-        llvm::outs() << "is Anonymous\n"; 
-      } else {
-        llvm::outs() << "is not Anonymous\n"; 
+      // check if there is an identifier
+      // // NOT WORKING!
+      // if (recordDecl->isAnonymousStructOrUnion()) {
+      //   llvm::outs() << "is Anonymous\n"; 
+      // } else {
+      //   llvm::outs() << "is not Anonymous\n"; 
+      // }
+      if (!(recordDecl->getNameAsString()).empty()) {
+        rdf.setMode(rdf.ID_ONLY);
       }
 
-      if (!recordDecl->field_empty()) {
-        for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
-          llvm::outs() << "identifier:" <<(*it)->getNameAsString() 
-          << " type: " << (*it)->getType().getAsString()<< "\n";
-        }
+      // assume struct
+
+      // dump the fortran code
+      if (rdf.mode == rdf.ID_ONLY or rdf.mode == rdf.ID_TAG) {
+        // struct has a identifier 
+        llvm::outs() << rdf.getFortranStructASString();
       }
 
-      llvm::outs() << "found RecordDecl " << recordDecl->getNameAsString() + "\n";
+
+
+
+
+      // llvm::outs() << "found RecordDecl " << recordDecl->getNameAsString() + "\n";
 
       //RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
     } else if (isa<VarDecl> (d)) {
@@ -315,6 +421,7 @@ public:
           // type: struct MyType (or a loc identifier)
       llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
       << " type: " << varDecl->getType().getAsString() << "\n";
+
     } else if (isa<EnumDecl> (d)) {
       EnumDecl *enumDecl = cast<EnumDecl> (d);
       llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
