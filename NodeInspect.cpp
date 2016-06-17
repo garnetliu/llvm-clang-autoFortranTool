@@ -16,6 +16,8 @@
 #include "clang/Lex/Lexer.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 
+// preprocesser
+
 #include <stdio.h>
 #include <string>
 #include <sstream>
@@ -138,7 +140,7 @@ string RecordDeclFormatter::getFortranStructASString() {
   string rd_buffer;
 
   if (mode == ID_ONLY) {
-    string identifier = "struct " + recordDecl->getNameAsString();
+    string identifier = "struct_" + recordDecl->getNameAsString();
     string fieldsInFortran = getFortranFields();
 
     rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";
@@ -148,6 +150,11 @@ string RecordDeclFormatter::getFortranStructASString() {
     string fieldsInFortran = getFortranFields();
 
     rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";
+  } else if (mode == ID_TAG) {
+    string identifier = tag_name;
+    string fieldsInFortran = getFortranFields();
+
+    rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";    
   }
 
   return rd_buffer;
@@ -399,6 +406,7 @@ public:
       RecordDecl *recordDecl = rdf.recordDecl;
 
       // check if there is an identifier
+
       // // NOT WORKING!
       // if (recordDecl->isAnonymousStructOrUnion()) {
       //   llvm::outs() << "is Anonymous\n"; 
@@ -407,12 +415,11 @@ public:
       // }
       if (!(recordDecl->getNameAsString()).empty()) {
         rdf.setMode(rdf.ID_ONLY);
-      }
-
-      // assume struct
+      } 
+      // assume struct, not considering union
 
       // dump the fortran code
-      if (rdf.mode == rdf.ID_ONLY or rdf.mode == rdf.ID_TAG) {
+      if (rdf.mode != rdf.ANONYMOUS) {
         // struct has a identifier 
         llvm::outs() << rdf.getFortranStructASString();
       }
@@ -420,12 +427,19 @@ public:
       //RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
     } else if (isa<VarDecl> (d)) {
       VarDecl *varDecl = cast<VarDecl> (d);
-          // name: myType
-          // type: struct MyType (or a loc identifier)
 
       if (varDecl->getType().getTypePtr()->isStructureType()) {
-        llvm::outs() << "structure type\n";
+        // structure type
         RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
+        RecordDeclFormatter rdf(rd);
+
+        if (!(rdf.recordDecl->getNameAsString()).empty()) {
+          rdf.setMode(rdf.ID_TAG);
+        }
+        rdf.setTagName(varDecl->getNameAsString());
+
+        llvm::outs() << rdf.getFortranStructASString();
+
       } else {
         llvm::outs() << "not structure type\n";
       }
@@ -463,6 +477,28 @@ private:
   Rewriter &TheRewriter;
 };
 
+// class Find_Includes : public PPCallbacks
+// {
+// public:
+//   bool has_include;
+
+//   void InclusionDirective(
+//     SourceLocation hash_loc,
+//     const Token &include_token,
+//     StringRef file_name,
+//     bool is_angled,
+//     CharSourceRange filename_range,
+//     const FileEntry *file,
+//     StringRef search_path,
+//     StringRef relative_path,
+//     const Module *imported)
+//   {
+//     // do something with the include
+//     has_include = true;
+//   }
+// };
+
+
 class TraverseNodeConsumer : public clang::ASTConsumer {
 public:
   TraverseNodeConsumer(Rewriter &R) : Visitor(R) {}
@@ -483,6 +519,29 @@ private:
 class TraverseNodeAction : public clang::ASTFrontendAction {
 public:
   TraverseNodeAction() {}
+
+  // // for macros inspection
+  // bool BeginSourceFileAction(CompilerInstance &ci, StringRef)
+  // {
+  //   std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
+
+  //   Preprocessor &pp = ci.getPreprocessor();
+  //   pp.addPPCallbacks(std::move(find_includes_callback));
+
+  //   return true;
+  // }
+
+  // void EndSourceFileAction()
+  // {
+  //   CompilerInstance &ci = getCompilerInstance();
+  //   Preprocessor &pp = ci.getPreprocessor();
+  //   Find_Includes *find_includes_callback = static_cast<Find_Includes>(pp.getPPCallbacks());
+
+  //   // do whatever you want with the callback now
+  //   if (find_includes_callback->has_include)
+  //     std::cout << "Found at least one include" << std::endl;
+  // }
+
   // void EndSourceFileAction() override {
   //   Now emit the rewritten buffer.
   //   TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(llvm::outs());
