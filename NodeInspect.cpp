@@ -10,13 +10,20 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
-#include "clang/Frontend/CompilerInstance.h"
 
 // lexer and writer
 #include "clang/Lex/Lexer.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 
 // preprocesser
+#include "clang/Basic/FileManager.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/Frontend/FrontendPluginRegistry.h"
+#include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/Preprocessor.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/FormattedStream.h"
 
 #include <stdio.h>
 #include <string>
@@ -477,26 +484,26 @@ private:
   Rewriter &TheRewriter;
 };
 
-// class Find_Includes : public PPCallbacks
-// {
-// public:
-//   bool has_include;
+class Find_Includes : public PPCallbacks
+{
+public:
+  bool has_include;
 
-//   void InclusionDirective(
-//     SourceLocation hash_loc,
-//     const Token &include_token,
-//     StringRef file_name,
-//     bool is_angled,
-//     CharSourceRange filename_range,
-//     const FileEntry *file,
-//     StringRef search_path,
-//     StringRef relative_path,
-//     const Module *imported)
-//   {
-//     // do something with the include
-//     has_include = true;
-//   }
-// };
+  void InclusionDirective(
+    SourceLocation hash_loc,
+    const Token &include_token,
+    StringRef file_name,
+    bool is_angled,
+    CharSourceRange filename_range,
+    const FileEntry *file,
+    StringRef search_path,
+    StringRef relative_path,
+    const clang::Module *imported)
+  {
+    // do something with the include
+    has_include = true;
+  }
+};
 
 
 class TraverseNodeConsumer : public clang::ASTConsumer {
@@ -521,26 +528,26 @@ public:
   TraverseNodeAction() {}
 
   // // for macros inspection
-  // bool BeginSourceFileAction(CompilerInstance &ci, StringRef)
-  // {
-  //   std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
+  bool BeginSourceFileAction(CompilerInstance &ci, StringRef)
+  {
+    std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
 
-  //   Preprocessor &pp = ci.getPreprocessor();
-  //   pp.addPPCallbacks(std::move(find_includes_callback));
+    Preprocessor &pp = ci.getPreprocessor();
+    pp.addPPCallbacks(std::move(find_includes_callback));
 
-  //   return true;
-  // }
+    return true;
+  }
 
-  // void EndSourceFileAction()
-  // {
-  //   CompilerInstance &ci = getCompilerInstance();
-  //   Preprocessor &pp = ci.getPreprocessor();
-  //   Find_Includes *find_includes_callback = static_cast<Find_Includes>(pp.getPPCallbacks());
+//   void EndSourceFileAction()
+//   {
+//     CompilerInstance &ci = getCompilerInstance();
+//     Preprocessor &pp = ci.getPreprocessor();
+//     Find_Includes *find_includes_callback = dynamic_cast<Find_Includes *>(pp.getPPCallbacks());
 
-  //   // do whatever you want with the callback now
-  //   if (find_includes_callback->has_include)
-  //     std::cout << "Found at least one include" << std::endl;
-  // }
+//     // do whatever you want with the callback now
+//     if (find_includes_callback->has_include)
+//       llvm::outs() << "Found at least one include\n";
+//   }
 
   // void EndSourceFileAction() override {
   //   Now emit the rewritten buffer.
