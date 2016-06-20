@@ -1,110 +1,6 @@
-// Declares clang::SyntaxOnlyAction.
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-// Declares llvm::cl::extrahelp.
-#include "llvm/Support/CommandLine.h"
+#include "NodeInspect.h"
 
-// recursive converter
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendAction.h"
-
-// lexer and writer
-#include "clang/Lex/Lexer.h"
-#include "clang/Rewrite/Core/Rewriter.h"
-
-// preprocesser
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/FrontendPluginRegistry.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "clang/Lex/Preprocessor.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/FormattedStream.h"
-
-#include <stdio.h>
-#include <string>
-#include <sstream>
-
-using namespace clang;
-using namespace clang::tooling;
-using namespace llvm;
-using namespace std;
-
-// Apply a custom category to all command-line options so that they are the
-// only ones displayed.
-static llvm::cl::OptionCategory MyToolCategory("my-tool options");
-
-// CommonOptionsParser declares HelpMessage with a description of the common
-// command-line options related to the compilation database and input files.
-// It's nice to have this help message in all tools.
-static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-
-// A help message for this specific tool can be added afterwards.
-static cl::extrahelp MoreHelp("\nMore help text...");
-
-//------------format class modules----------------------------------------------------------------------------------------------------
-class CToFTypeFormatter {
-public:
-  QualType c_qualType;
-
-  CToFTypeFormatter(QualType qt);
-  string getFortranTypeASString(bool typeWrapper);
-  bool isSameType(QualType qt2);
-};
-
-class RecordDeclFormatter {
-public:
-  const int ANONYMOUS = 0;
-  const int ID_ONLY = 1;
-  const int TAG_ONLY = 2;
-  const int ID_TAG = 3;
-  const int UNION = 0;
-  const int STRUCT = 1;
-
-  RecordDecl *recordDecl;
-  int mode = ANONYMOUS;
-  bool structOrUnion = STRUCT;
-  string tag_name;
-
-
-
-  // Member functions declarations
-  RecordDeclFormatter(RecordDecl *r);
-  void setMode(int m);
-  void setTagName(string name);
-  bool isStruct();
-  bool isUnion();
-  string getFortranStructASString();
-  string getFortranFields();
-
-// private:
-  
-};
-
-
-
-class FunctionDeclFormatter {
-public:
-  FunctionDecl *funcDecl;
-
-  // Member functions declarations
-  FunctionDeclFormatter(FunctionDecl *f, Rewriter &r);
-  string getParamsNamesASString();
-  string getParamsDeclASString();
-  string getFortranFunctDeclASString();
-  string getParamsTypesASString();
-
-private:
-  QualType returnQType;
-  llvm::ArrayRef<ParmVarDecl *> params;
-  Rewriter &rewriter;
-};
-
-// member function definitions
+//-----------formatter functions----------------------------------------------------------------------------------------------------
 
 RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
   recordDecl = r;
@@ -383,106 +279,96 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
 };
 
 
-//------------helper methods----------------------------------------------------------------------------------------------------
+//-----------AST visit functions----------------------------------------------------------------------------------------------------
 
-//-----------the program----------------------------------------------------------------------------------------------------
+bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
+  if (isa<TranslationUnitDecl> (d)) {
+    // tranlastion unit decl is the top node of all AST, ignore the inner structure of tud for now
+    llvm::outs() << "this is a TranslationUnitDecl\n";
+    RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
+  } else if (isa<FunctionDecl> (d)) {
+        // create formatter
+    FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
+    // -------------------------------dump Fortran-------------------------------
+    llvm::outs() << fdf.getFortranFunctDeclASString()
+    << "\n";
 
-class TraverseNodeVisitor : public RecursiveASTVisitor<TraverseNodeVisitor> {
-public:
-  TraverseNodeVisitor(Rewriter &R) : TheRewriter(R) {}
+  } else if (isa<TypedefDecl> (d)) {
+    //TypedefDecl *tdd = cast<TypedefDecl> (d);
+    llvm::outs() << "found TypedefDecl \n";
+  } else if (isa<RecordDecl> (d)) {
+    // struct
+    RecordDeclFormatter rdf(cast<RecordDecl> (d));
+    RecordDecl *recordDecl = rdf.recordDecl;
 
+    // check if there is an identifier
 
-  bool TraverseDecl(Decl *d) {
-    if (isa<TranslationUnitDecl> (d)) {
-      // tranlastion unit decl is the top node of all AST, ignore the inner structure of tud for now
-      llvm::outs() << "this is a TranslationUnitDecl\n";
-      RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
-    } else if (isa<FunctionDecl> (d)) {
-          // create formatter
-      FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
-      // -------------------------------dump Fortran-------------------------------
-      llvm::outs() << fdf.getFortranFunctDeclASString()
-      << "\n";
+    // // NOT WORKING!
+    // if (recordDecl->isAnonymousStructOrUnion()) {
+    //   llvm::outs() << "is Anonymous\n"; 
+    // } else {
+    //   llvm::outs() << "is not Anonymous\n"; 
+    // }
+    if (!(recordDecl->getNameAsString()).empty()) {
+      rdf.setMode(rdf.ID_ONLY);
+    } 
+    // assume struct, not considering union
 
-    } else if (isa<TypedefDecl> (d)) {
-      //TypedefDecl *tdd = cast<TypedefDecl> (d);
-      llvm::outs() << "found TypedefDecl \n";
-    } else if (isa<RecordDecl> (d)) {
-      // struct
-      RecordDeclFormatter rdf(cast<RecordDecl> (d));
-      RecordDecl *recordDecl = rdf.recordDecl;
-
-      // check if there is an identifier
-
-      // // NOT WORKING!
-      // if (recordDecl->isAnonymousStructOrUnion()) {
-      //   llvm::outs() << "is Anonymous\n"; 
-      // } else {
-      //   llvm::outs() << "is not Anonymous\n"; 
-      // }
-      if (!(recordDecl->getNameAsString()).empty()) {
-        rdf.setMode(rdf.ID_ONLY);
-      } 
-      // assume struct, not considering union
-
-      // dump the fortran code
-      if (rdf.mode != rdf.ANONYMOUS) {
-        // struct has a identifier 
-        llvm::outs() << rdf.getFortranStructASString();
-      }
-
-      //RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
-    } else if (isa<VarDecl> (d)) {
-      VarDecl *varDecl = cast<VarDecl> (d);
-
-      if (varDecl->getType().getTypePtr()->isStructureType()) {
-        // structure type
-        RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
-        RecordDeclFormatter rdf(rd);
-
-        if (!(rdf.recordDecl->getNameAsString()).empty()) {
-          rdf.setMode(rdf.ID_TAG);
-        }
-        rdf.setTagName(varDecl->getNameAsString());
-
-        llvm::outs() << rdf.getFortranStructASString();
-
-      } else {
-        llvm::outs() << "not structure type\n";
-      }
-
-      llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
-      << " type: " << varDecl->getType().getAsString() << "\n";
-
-    } else if (isa<EnumDecl> (d)) {
-      EnumDecl *enumDecl = cast<EnumDecl> (d);
-      llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
-    } else {
-      llvm::outs() << "found other declaration \n";
-      d->dump();
+    // dump the fortran code
+    if (rdf.mode != rdf.ANONYMOUS) {
+      // struct has a identifier 
+      llvm::outs() << rdf.getFortranStructASString();
     }
-      // comment out because function declaration doesn't need to be traversed.
-      // RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d); // Forward to base class
-      return true; // Return false to stop the AST analyzing
-  }
 
+    //RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
+  } else if (isa<VarDecl> (d)) {
+    VarDecl *varDecl = cast<VarDecl> (d);
 
-  bool TraverseStmt(Stmt *x) {
-    llvm::outs() << "found statement \n";
-    x->dump();
-    RecursiveASTVisitor<TraverseNodeVisitor>::TraverseStmt(x);
-    return true;
-  }
-  bool TraverseType(QualType x) {
-    llvm::outs() << "found type " << x.getAsString() << "\n";
-    x->dump();
-    RecursiveASTVisitor<TraverseNodeVisitor>::TraverseType(x);
-    return true;
-  }
+    if (varDecl->getType().getTypePtr()->isStructureType()) {
+      // structure type
+      RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
+      RecordDeclFormatter rdf(rd);
 
-private:
-  Rewriter &TheRewriter;
+      if (!(rdf.recordDecl->getNameAsString()).empty()) {
+        rdf.setMode(rdf.ID_TAG);
+      }
+      rdf.setTagName(varDecl->getNameAsString());
+
+      llvm::outs() << rdf.getFortranStructASString();
+
+    } else {
+      llvm::outs() << "not structure type\n";
+    }
+
+    llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
+    << " type: " << varDecl->getType().getAsString() << "\n";
+
+  } else if (isa<EnumDecl> (d)) {
+    EnumDecl *enumDecl = cast<EnumDecl> (d);
+    llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
+  } else {
+    llvm::outs() << "found other declaration \n";
+    d->dump();
+  }
+    // comment out because function declaration doesn't need to be traversed.
+    // RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d); // Forward to base class
+    return true; // Return false to stop the AST analyzing
 };
+
+
+bool TraverseNodeVisitor::TraverseStmt(Stmt *x) {
+  llvm::outs() << "found statement \n";
+  x->dump();
+  RecursiveASTVisitor<TraverseNodeVisitor>::TraverseStmt(x);
+  return true;
+};
+bool TraverseNodeVisitor::TraverseType(QualType x) {
+  llvm::outs() << "found type " << x.getAsString() << "\n";
+  x->dump();
+  RecursiveASTVisitor<TraverseNodeVisitor>::TraverseType(x);
+  return true;
+};
+
 
 class Find_Includes : public PPCallbacks
 {
@@ -506,6 +392,8 @@ public:
 };
 
 
+//-----------the main program----------------------------------------------------------------------------------------------------
+
 class TraverseNodeConsumer : public clang::ASTConsumer {
 public:
   TraverseNodeConsumer(Rewriter &R) : Visitor(R) {}
@@ -528,7 +416,7 @@ public:
   TraverseNodeAction() {}
 
   // // for macros inspection
-  bool BeginSourceFileAction(CompilerInstance &ci, StringRef)
+  bool BeginSourceFileAction(CompilerInstance &ci, StringRef) override
   {
     std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
 
@@ -549,10 +437,10 @@ public:
 //       llvm::outs() << "Found at least one include\n";
 //   }
 
-  // void EndSourceFileAction() override {
-  //   Now emit the rewritten buffer.
-  //   TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(llvm::outs());
-  // }
+  void EndSourceFileAction() override {
+    //Now emit the rewritten buffer.
+    //TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(llvm::outs());
+  }
 
   std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
     clang::CompilerInstance &Compiler, llvm::StringRef InFile) override {
