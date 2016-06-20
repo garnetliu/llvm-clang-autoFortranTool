@@ -369,28 +369,80 @@ bool TraverseNodeVisitor::TraverseType(QualType x) {
   return true;
 };
 
+//-----------PP Callbacks functions----------------------------------------------------------------------------------------------------
 
-class Find_Includes : public PPCallbacks
-{
+// class Find_Includes : public PPCallbacks
+// {
+// public:
+//   bool has_include;
+
+//   void InclusionDirective(
+//     SourceLocation hash_loc,
+//     const Token &include_token,
+//     StringRef file_name,
+//     bool is_angled,
+//     CharSourceRange filename_range,
+//     const FileEntry *file,
+//     StringRef search_path,
+//     StringRef relative_path,
+//     const clang::Module *imported) {
+//     // do something with the include
+//     has_include = true;
+//     //const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(hash_loc));
+//     outs() << "found includes " << include_token.getLiteralData() << "\n";
+
+//   }
+// };
+
+// Adapted from Douglas Gregor's presentation (slide 8):
+// http://llvm.org/devmtg/2011-11/Gregor_ExtendingClang.pdf
+class FindDependencies : public PPCallbacks {
+  CompilerInstance &ci;
+  // SourceManager& SM;// = ci.getSourceManager();
+  // Preprocessor &pp; // = ci.getPreprocessor();
+  int Indent;
+  llvm::formatted_raw_ostream FOuts;
 public:
-  bool has_include;
 
-  void InclusionDirective(
-    SourceLocation hash_loc,
-    const Token &include_token,
-    StringRef file_name,
-    bool is_angled,
-    CharSourceRange filename_range,
-    const FileEntry *file,
-    StringRef search_path,
-    StringRef relative_path,
-    const clang::Module *imported)
-  {
-    // do something with the include
-    has_include = true;
+  explicit FindDependencies(CompilerInstance &ci)
+  : ci(ci), //SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
+  Indent(0), FOuts(llvm::outs()) {}
+
+  void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
+    SourceManager& SM = ci.getSourceManager();
+    if (Reason != EnterFile && Reason != ExitFile)
+      return;
+    if (const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(loc))) {
+      if (Reason == EnterFile) {
+        FOuts << "Include Tree:";
+        FOuts.PadToColumn(13 + Indent * 2);
+        FOuts << FE->getName() << "\n";
+        Indent++;
+      } else if (Reason == ExitFile) {
+        Indent--;
+      }
+    }
+  };
+
+  void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
+    const MacroInfo *mi = MD->getMacroInfo();
+    SourceManager& SM = ci.getSourceManager();
+    string macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
+    string macroValue = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc (), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
+    //outs() << "macro name: " << macroName << ", macro value: " << macroValue << "\n";
+    if (mi->isFromASTFile()) {
+      outs() << macroValue << "\n";
+    } else {
+      outs() << "not from ast\n";
+    }
+    
+    // if (mi->isFunctionLike()) {
+    //   outs() << "function like macro: " << mi->getNumArgs() << " args\n";
+    // } else if (mi->isObjectLike()) {
+    //   outs() << "object like macro\n";
+    // }
   }
 };
-
 
 //-----------the main program----------------------------------------------------------------------------------------------------
 
@@ -418,10 +470,13 @@ public:
   // // for macros inspection
   bool BeginSourceFileAction(CompilerInstance &ci, StringRef) override
   {
-    std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
+    // std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
+    // Preprocessor &pp = ci.getPreprocessor();
+    // pp.addPPCallbacks(std::move(find_includes_callback));
 
     Preprocessor &pp = ci.getPreprocessor();
-    pp.addPPCallbacks(std::move(find_includes_callback));
+    //pp.addPPCallbacks(llvm::make_unique<FindDependencies>(ci.getSourceManager()));
+    pp.addPPCallbacks(llvm::make_unique<FindDependencies>(ci));
 
     return true;
   }
@@ -465,4 +520,4 @@ int main(int argc, const char **argv) {
   //   << "USAGE: ~/clang-llvm/build/bin/node-inspect <PATH> OR "
   //   << "~/clang-llvm/build/bin/node-inspect <CODE> inline";
   // }
-}
+};
