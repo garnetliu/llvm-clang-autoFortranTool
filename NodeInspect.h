@@ -55,6 +55,7 @@ public:
   CToFTypeFormatter(QualType qt);
   string getFortranTypeASString(bool typeWrapper);
   bool isSameType(QualType qt2);
+  static bool isNumeric(const string input);
 };
 
 class RecordDeclFormatter {
@@ -81,6 +82,8 @@ public:
   bool isUnion();
   string getFortranStructASString();
   string getFortranFields();
+
+
 
 // private:
   

@@ -135,6 +135,12 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
 };
 
 
+bool CToFTypeFormatter::isNumeric(const string input) {
+  // "123L" "18446744073709551615ULL" "18446744073709551615UL" "1.23"
+  return std::all_of(input.begin(), input.end(), ::isdigit);
+};
+
+
 
 FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rewriter(r) {
   funcDecl = f;
@@ -307,9 +313,47 @@ MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *m
           macroVal += macroDef[i];
         }
       }
+
+    // if (CToFTypeFormatter::isNumeric(macroVal)) {
+    //   outs() << "value is numeric\n";
+    // } else {
+    //   outs() << "value is not numerics\n";
+    // }
+
     }
 
 }
+
+bool MacroFormatter::isObjectLike() {
+  return isObjectOrFunction;
+};
+bool MacroFormatter::isFunctionLike() {
+  return !isObjectOrFunction;
+};
+
+string MacroFormatter::getFortranMacroASString() {
+  string fortranMacro;
+
+  // handle object first
+  if (isObjectLike()) {
+    // analyze type
+    if (!macroVal.empty()) {
+      if (CToFTypeFormatter::isNumeric(macroVal)) {
+        fortranMacro = "integer( c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+      }
+    } else {
+      fortranMacro = "<undecleared type>, parameter, public :: "+ macroName + "\n";
+    }
+    
+
+  } else {
+    outs() << "function is not supported yet\n";
+  }
+
+  return fortranMacro;
+};
+
+
 
 //-----------AST visit functions----------------------------------------------------------------------------------------------------
 
@@ -439,6 +483,23 @@ public:
   : ci(ci), //SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
   Indent(0), FOuts(llvm::outs()) {}
 
+  void InclusionDirective(
+    SourceLocation hash_loc,
+    const Token &include_token,
+    StringRef file_name,
+    bool is_angled,
+    CharSourceRange filename_range,
+    const FileEntry *file,
+    StringRef search_path,
+    StringRef relative_path,
+    const clang::Module *imported) {
+    // do something with the include
+    //bool has_include = true;
+    //const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(hash_loc));
+    outs() << "found includes " << include_token.getLiteralData() << "\n";
+
+  };
+
   void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
     SourceManager& SM = ci.getSourceManager();
     if (Reason != EnterFile && Reason != ExitFile)
@@ -475,48 +536,8 @@ public:
 
   void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
     MacroFormatter mf(MacroNameTok, MD, ci);
-    outs() << "macroName: " << mf.macroName << "\n";
-    outs() << "macroVal: " << mf.macroVal<< "\n";
-    // const MacroInfo *mi = MD->getMacroInfo();
-    // SourceManager& SM = ci.getSourceManager();
+    outs() << mf.getFortranMacroASString();
 
-    // // source text
-    // string macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
-    // string macroDef = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc(), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
-    
-    // // there might be a "(" follows the macroName for function macros, remove it
-    // if (macroName.back() == '(') {
-    //   outs() << "unwanted parenthesis found, remove it \n";
-    //   macroName.erase(macroName.size()-1);
-    // }
-
-    // // NOT WORKING!!
-    // // if (mi->isUsedForHeaderGuard()) {
-    // //   outs() << macroDef << "\n";
-    // // } else {
-    // //   outs() << "not used for header guard\n";
-    // // }
-
-
-    // if (mi->isFunctionLike()) {
-    //   outs() << "function like macro: " << mi->getNumArgs() << " args\n";
-    //   outs() << "macro name: <" << macroName << ">\n";
-    // } else if (mi->isObjectLike()) {
-    //   outs() << "object like macro: " << macroDef << "\n";
-    //   outs() << "macro name: <" << macroName << ">\n";
-
-    //   string macroVal; bool frontSpace = true;
-    //   for (size_t i = macroName.size(); i < macroDef.size(); i++) {
-    //     if (macroDef[i] != ' ') {
-    //       frontSpace = false;
-    //       macroVal += macroDef[i];
-    //     } else if (frontSpace == false) {
-    //       macroVal += macroDef[i];
-    //     }
-    //   }
-
-    //   outs() << "macro value: " << macroVal << "\n";
-    // }
   }
 
 };
