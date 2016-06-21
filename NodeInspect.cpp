@@ -140,6 +140,13 @@ bool CToFTypeFormatter::isNumeric(const string input) {
   return std::all_of(input.begin(), input.end(), ::isdigit);
 };
 
+bool CToFTypeFormatter::isString(const string input) {
+  if (input[0] == '\"' and input[input.size()-1] =='\"') {
+    return true;
+  }
+  return false;
+};
+
 
 
 FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rewriter(r) {
@@ -314,10 +321,10 @@ MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *m
         }
       }
 
-    // if (CToFTypeFormatter::isNumeric(macroVal)) {
-    //   outs() << "value is numeric\n";
+    // if (CToFTypeFormatter::isString(macroVal)) {
+    //   outs() << "value is string\n";
     // } else {
-    //   outs() << "value is not numerics\n";
+    //   outs() << "value is not string\n";
     // }
 
     }
@@ -340,8 +347,12 @@ string MacroFormatter::getFortranMacroASString() {
     if (!macroVal.empty()) {
       if (CToFTypeFormatter::isNumeric(macroVal)) {
         fortranMacro = "integer( c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-      }
-    } else {
+      } else if (CToFTypeFormatter::isString(macroVal)) {
+      fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+    }
+  }
+
+    else {
       fortranMacro = "<undecleared type>, parameter, public :: "+ macroName + "\n";
     }
     

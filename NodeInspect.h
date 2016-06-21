@@ -56,6 +56,7 @@ public:
   string getFortranTypeASString(bool typeWrapper);
   bool isSameType(QualType qt2);
   static bool isNumeric(const string input);
+  static bool isString(const string input);
 };
 
 class RecordDeclFormatter {
