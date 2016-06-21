@@ -279,6 +279,38 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
 };
 
 
+MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *md, CompilerInstance &ci) : md(md), ci(ci) {
+    const MacroInfo *mi = md->getMacroInfo();
+    SourceManager& SM = ci.getSourceManager();
+
+    // source text
+    macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
+    string macroDef = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc(), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
+    
+    // there might be a "(" follows the macroName for function macros, remove it
+    if (macroName.back() == '(') {
+      outs() << "unwanted parenthesis found, remove it \n";
+      macroName.erase(macroName.size()-1);
+    }
+
+    if (mi->isFunctionLike()) {
+      isObjectOrFunction = false;
+    } else if (mi->isObjectLike()) {
+      isObjectOrFunction = true;
+
+      bool frontSpace = true;
+      for (size_t i = macroName.size(); i < macroDef.size(); i++) {
+        if (macroDef[i] != ' ') {
+          frontSpace = false;
+          macroVal += macroDef[i];
+        } else if (frontSpace == false) {
+          macroVal += macroDef[i];
+        }
+      }
+    }
+
+}
+
 //-----------AST visit functions----------------------------------------------------------------------------------------------------
 
 bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
@@ -394,9 +426,8 @@ bool TraverseNodeVisitor::TraverseType(QualType x) {
 //   }
 // };
 
-// Adapted from Douglas Gregor's presentation (slide 8):
-// http://llvm.org/devmtg/2011-11/Gregor_ExtendingClang.pdf
-class FindDependencies : public PPCallbacks {
+
+class TraverseMacros : public PPCallbacks {
   CompilerInstance &ci;
   // SourceManager& SM;// = ci.getSourceManager();
   // Preprocessor &pp; // = ci.getPreprocessor();
@@ -404,7 +435,7 @@ class FindDependencies : public PPCallbacks {
   llvm::formatted_raw_ostream FOuts;
 public:
 
-  explicit FindDependencies(CompilerInstance &ci)
+  explicit TraverseMacros(CompilerInstance &ci)
   : ci(ci), //SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
   Indent(0), FOuts(llvm::outs()) {}
 
@@ -424,24 +455,70 @@ public:
     }
   };
 
+  // conditional macros
+  void  If (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue) {};
+  void  Elif (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue, SourceLocation IfLoc) {};
+  void  Ifdef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
+  void  Ifndef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
+  void  Else (SourceLocation Loc, SourceLocation IfLoc) {};
+
+
+  void MacroExpands (const Token &MacroNameTok, const MacroDefinition &MD, SourceRange Range, const MacroArgs *Args) {
+    // #define X 3
+    // #if X == 1
+    // int a;
+    // #else
+    // int b;
+    // #endif
+
+  };
+
   void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
-    const MacroInfo *mi = MD->getMacroInfo();
-    SourceManager& SM = ci.getSourceManager();
-    string macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
-    string macroValue = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc (), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
-    //outs() << "macro name: " << macroName << ", macro value: " << macroValue << "\n";
-    if (mi->isFromASTFile()) {
-      outs() << macroValue << "\n";
-    } else {
-      outs() << "not from ast\n";
-    }
+    MacroFormatter mf(MacroNameTok, MD, ci);
+    outs() << "macroName: " << mf.macroName << "\n";
+    outs() << "macroVal: " << mf.macroVal<< "\n";
+    // const MacroInfo *mi = MD->getMacroInfo();
+    // SourceManager& SM = ci.getSourceManager();
+
+    // // source text
+    // string macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
+    // string macroDef = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc(), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
     
+    // // there might be a "(" follows the macroName for function macros, remove it
+    // if (macroName.back() == '(') {
+    //   outs() << "unwanted parenthesis found, remove it \n";
+    //   macroName.erase(macroName.size()-1);
+    // }
+
+    // // NOT WORKING!!
+    // // if (mi->isUsedForHeaderGuard()) {
+    // //   outs() << macroDef << "\n";
+    // // } else {
+    // //   outs() << "not used for header guard\n";
+    // // }
+
+
     // if (mi->isFunctionLike()) {
     //   outs() << "function like macro: " << mi->getNumArgs() << " args\n";
+    //   outs() << "macro name: <" << macroName << ">\n";
     // } else if (mi->isObjectLike()) {
-    //   outs() << "object like macro\n";
+    //   outs() << "object like macro: " << macroDef << "\n";
+    //   outs() << "macro name: <" << macroName << ">\n";
+
+    //   string macroVal; bool frontSpace = true;
+    //   for (size_t i = macroName.size(); i < macroDef.size(); i++) {
+    //     if (macroDef[i] != ' ') {
+    //       frontSpace = false;
+    //       macroVal += macroDef[i];
+    //     } else if (frontSpace == false) {
+    //       macroVal += macroDef[i];
+    //     }
+    //   }
+
+    //   outs() << "macro value: " << macroVal << "\n";
     // }
   }
+
 };
 
 //-----------the main program----------------------------------------------------------------------------------------------------
@@ -475,8 +552,8 @@ public:
     // pp.addPPCallbacks(std::move(find_includes_callback));
 
     Preprocessor &pp = ci.getPreprocessor();
-    //pp.addPPCallbacks(llvm::make_unique<FindDependencies>(ci.getSourceManager()));
-    pp.addPPCallbacks(llvm::make_unique<FindDependencies>(ci));
+    //pp.addPPCallbacks(llvm::make_unique<TraverseMacros>(ci.getSourceManager()));
+    pp.addPPCallbacks(llvm::make_unique<TraverseMacros>(ci));
 
     return true;
   }

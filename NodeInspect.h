@@ -105,6 +105,23 @@ private:
   Rewriter &rewriter;
 };
 
+
+class MacroFormatter {
+public:
+  const MacroDirective *md;
+  string macroName;
+  string macroVal;
+
+  MacroFormatter(const Token MacroNameTok, const MacroDirective *m, CompilerInstance &c);
+  bool isObjectLike();
+  bool isFunctionLike();
+  string getFortranMacroASString();
+
+private:
+  bool isObjectOrFunction;
+  CompilerInstance &ci;
+};
+
 //------------Visitor class decl----------------------------------------------------------------------------------------------------
 
 class TraverseNodeVisitor : public RecursiveASTVisitor<TraverseNodeVisitor> {
