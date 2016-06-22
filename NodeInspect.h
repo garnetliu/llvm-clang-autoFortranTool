@@ -115,15 +115,16 @@ public:
   const MacroDirective *md;
   string macroName;
   string macroVal;
+  bool isInSystemHeader;
 
-  MacroFormatter(const Token MacroNameTok, const MacroDirective *m, CompilerInstance &c);
+  MacroFormatter(const Token MacroNameTok, const MacroDirective *md, CompilerInstance &ci);
   bool isObjectLike();
   bool isFunctionLike();
   string getFortranMacroASString();
 
 private:
   bool isObjectOrFunction;
-  CompilerInstance &ci;
+  //CompilerInstance &ci;
 };
 
 //------------Visitor class decl----------------------------------------------------------------------------------------------------

@@ -292,17 +292,33 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
 };
 
 
-MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *md, CompilerInstance &ci) : md(md), ci(ci) {
+MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *md, CompilerInstance &ci) : md(md) { //, ci(ci) {
     const MacroInfo *mi = md->getMacroInfo();
     SourceManager& SM = ci.getSourceManager();
+
+    // try {
+      if (SM.isInSystemHeader(mi->getDefinitionLoc())) {
+        outs() << "macro name isInSystemHeader\n";
+        isInSystemHeader = true;
+      } else {
+        outs() << "macro name is not isInSystemHeader\n";
+        isInSystemHeader = false;
+      }
+    // } catch (...) {
+    //   outs() << "cannot locate macro as literal";
+    //   isInSystemHeader = true;
+    // }
+
 
     // source text
     macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
     string macroDef = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc(), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
     
+
+
     // there might be a "(" follows the macroName for function macros, remove it
     if (macroName.back() == '(') {
-      outs() << "unwanted parenthesis found, remove it \n";
+      //outs() << "unwanted parenthesis found, remove it \n";
       macroName.erase(macroName.size()-1);
     }
 
@@ -340,26 +356,28 @@ bool MacroFormatter::isFunctionLike() {
 
 string MacroFormatter::getFortranMacroASString() {
   string fortranMacro;
-
-  // handle object first
-  if (isObjectLike()) {
-    // analyze type
-    if (!macroVal.empty()) {
-      if (CToFTypeFormatter::isNumeric(macroVal)) {
-        fortranMacro = "integer( c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-      } else if (CToFTypeFormatter::isString(macroVal)) {
-      fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+  if (!isInSystemHeader) {
+    // handle object first
+    if (isObjectLike()) {
+      // analyze type
+      if (!macroVal.empty()) {
+        if (CToFTypeFormatter::isNumeric(macroVal)) {
+          fortranMacro = "integer( c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+        } else if (CToFTypeFormatter::isString(macroVal)) {
+        fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+      }
     }
+
+      else {
+        fortranMacro = "<undecleared type>, parameter, public :: "+ macroName + "\n";
+      }
+      
+
+    } else {
+      outs() << "function is not supported yet\n";
+    }    
   }
 
-    else {
-      fortranMacro = "<undecleared type>, parameter, public :: "+ macroName + "\n";
-    }
-    
-
-  } else {
-    outs() << "function is not supported yet\n";
-  }
 
   return fortranMacro;
 };
@@ -494,22 +512,22 @@ public:
   : ci(ci), //SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
   Indent(0), FOuts(llvm::outs()) {}
 
-  void InclusionDirective(
-    SourceLocation hash_loc,
-    const Token &include_token,
-    StringRef file_name,
-    bool is_angled,
-    CharSourceRange filename_range,
-    const FileEntry *file,
-    StringRef search_path,
-    StringRef relative_path,
-    const clang::Module *imported) {
-    // do something with the include
-    //bool has_include = true;
-    //const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(hash_loc));
-    outs() << "found includes " << include_token.getLiteralData() << "\n";
+  // void InclusionDirective(
+  //   SourceLocation hash_loc,
+  //   const Token &include_token,
+  //   StringRef file_name,
+  //   bool is_angled,
+  //   CharSourceRange filename_range,
+  //   const FileEntry *file,
+  //   StringRef search_path,
+  //   StringRef relative_path,
+  //   const clang::Module *imported) {
+  //   // do something with the include
+  //   //bool has_include = true;
+  //   //const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(hash_loc));
+  //   outs() << "found includes " << include_token.getLiteralData() << "\n";
 
-  };
+  // };
 
   void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
     SourceManager& SM = ci.getSourceManager();
