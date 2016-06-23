@@ -22,7 +22,7 @@ string RecordDeclFormatter::getFortranFields() {
   string fieldsInFortran = "";
   if (!recordDecl->field_empty()) {
     for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
-      CToFTypeFormatter tf((*it)->getType());
+      CToFTypeFormatter tf((*it)->getType(), recordDecl->getASTContext());
       string identifier = (*it)->getNameAsString();
 
       fieldsInFortran += "\t" + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
@@ -75,7 +75,7 @@ void RecordDeclFormatter::setMode() {
   }
 };
 
-CToFTypeFormatter::CToFTypeFormatter(QualType qt) {
+CToFTypeFormatter::CToFTypeFormatter(QualType qt, ASTContext &ac): ac(ac) {
   c_qualType = qt;
 };
 
@@ -89,6 +89,9 @@ bool CToFTypeFormatter::isSameType(QualType qt2) {
     } else {
       return false;
     }
+  } else if (c_qualType.getTypePtr()->isIntegerType() and qt2.getTypePtr()->isIntegerType()) {
+    // consider size_t and int
+    return true;
   } else {
     return c_qualType == qt2;
   }
@@ -124,16 +127,33 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
         f_type = "c_ptr";
       }
     }
-  } else {
-    f_type = "not yet implemented";
+  } else if (c_qualType.getTypePtr()->isArrayType()) {
+    const ArrayType *at = c_qualType.getTypePtr()->getAsArrayTypeUnsafe ();
+    QualType e_qualType = at->getElementType ();
+    if (e_qualType.getTypePtr()->isCharType()) {
+      if (typeWrapper) {
+        f_type = "character(c_char)";
+      } else {
+        f_type = "c_char";
+      }
+    } else {
+      f_type = "array type (" + e_qualType.getAsString()+")";
+    }
+  }
+  //  else if (c_qualType.getTypePtr()->isAnyCharacterType()) {
+  //   if (typeWrapper) {
+  //     f_type = "character(c_char)";
+  //   } else {
+  //     f_type = "c_char";
+  //   }
+  // }
+
+  else {
+    f_type = "type not yet implemented (" + c_qualType.getAsString()+")";
   }
   return f_type;
 };
 
-string CToFTypeFormatter::getFortranTypeASString(string input, bool typeWrapper) {
-
-  return "";
-}
 
 bool CToFTypeFormatter::isAllDigit(const string input) {
   // "123L" "18446744073709551615ULL" "18446744073709551615UL" "1.23"
@@ -147,6 +167,34 @@ bool CToFTypeFormatter::isString(const string input) {
   return false;
 };
 
+bool CToFTypeFormatter::isCharType(const string input) {
+  if (input.find("char") != std::string::npos) {
+      return true;
+  }
+  return false;
+};
+
+// beware: #define __sgetc(p) (--(p)->_r < 0 ? __srget(p) : (int)(*(p)->_p++))
+bool CToFTypeFormatter::isIntType(const string input) {
+  if (input.find("int") != std::string::npos and (input.find("long") == std::string::npos)) {
+      return true;
+  }
+  return false;
+};
+
+bool CToFTypeFormatter::isShortType(const string input) {
+  if (input.find("short") != std::string::npos) {
+      return true;
+  }
+  return false;
+};
+
+bool CToFTypeFormatter::isLongType(const string input) {
+  if (input.find("long") != std::string::npos and (input.find("int") == std::string::npos)) {
+      return true;
+  }
+  return false;
+};
 
 // -----------initializer FunctionDeclFormatter--------------------
 FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rewriter(r) {
@@ -167,12 +215,12 @@ string FunctionDeclFormatter::getParamsTypesASString() {
     if (first) {
       prev_qt = (*it)->getOriginalType();
       qts.push_back(prev_qt);
-      CToFTypeFormatter tf((*it)->getOriginalType());
+      CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
       paramsType = tf.getFortranTypeASString(false);
       first = false;
 
       // add the return type too
-      CToFTypeFormatter rtf(returnQType);
+      CToFTypeFormatter rtf(returnQType, funcDecl->getASTContext());
       if (!returnQType.getTypePtr()->isVoidType()) {
         if (rtf.isSameType(prev_qt)) {
           //llvm::outs() << "same type as previous" << (*it)->getOriginalType().getAsString() + "\n";
@@ -194,7 +242,7 @@ string FunctionDeclFormatter::getParamsTypesASString() {
       }
 
     } else {
-      CToFTypeFormatter tf((*it)->getOriginalType());
+      CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
       if (tf.isSameType(prev_qt)) {
         //llvm::outs() << "same type as previous" << (*it)->getOriginalType().getAsString() + "\n";
       } else {
@@ -228,7 +276,7 @@ string FunctionDeclFormatter::getParamsDeclASString() {
       pname = "arg_" + to_string(index);
     }
     
-    CToFTypeFormatter tf((*it)->getOriginalType());
+    CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
     // in some cases parameter doesn't have a name
     paramsDecl += "\t" + tf.getFortranTypeASString(true) + ", value" + " :: " + pname + "\n"; // need to handle the attribute later
     index ++;
@@ -243,6 +291,7 @@ string FunctionDeclFormatter::getParamsNamesASString() {
   for (auto it = params.begin(); it != params.end(); it++) {
     if (it == params.begin()) {
     // if the param name is empty, rename it to arg_index
+      //uint64_t  getTypeSize (QualType T) const for array!!!
     string pname = (*it)->getNameAsString();
     if (pname.empty()) {
       pname = "arg_" + to_string(index);
@@ -250,6 +299,9 @@ string FunctionDeclFormatter::getParamsNamesASString() {
       paramsNames += pname;
     } else { // parameters in between
     // if the param name is empty, rename it to arg_index
+      //uint64_t  getTypeSize (QualType T) const for array!!!
+      //       outs() << " c_qualType size:" << ac.getTypeSize(c_qualType)
+      // << "e_qualType size: " << ac.getTypeSize(e_qualType) <<"\n";
     string pname = (*it)->getNameAsString();
     if (pname.empty()) {
       pname = "arg_" + to_string(index);
@@ -271,7 +323,7 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
     if (returnQType.getTypePtr()->isVoidType()) {
       funcType = "SUBROUTINE";
     } else {
-      CToFTypeFormatter tf(returnQType);
+      CToFTypeFormatter tf(returnQType, funcDecl->getASTContext());
       funcType = tf.getFortranTypeASString(true) + " FUNCTION";
     }
 
@@ -347,12 +399,20 @@ string MacroFormatter::getFortranMacroASString() {
         if (CToFTypeFormatter::isAllDigit(macroVal)) {
           fortranMacro = "integer(c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
         } else if (CToFTypeFormatter::isString(macroVal)) {
-        fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-      }
+          fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+        } else if (CToFTypeFormatter::isLongType(macroVal)) {
+          // format type def
+        } else if (CToFTypeFormatter::isShortType(macroVal)) {
+          // format type def
+        } else if (CToFTypeFormatter::isIntType(macroVal)) {
+          // format type def
+        } else {
+          outs() << "type not supported yet\n";
+        }
     } else { // macroVal.empty(), make the object a bool positive
-        fortranMacro = "integer(c_int), parameter, public :: "+ macroName  + " = 1 \n";
-      }
-      
+      fortranMacro = "integer(c_int), parameter, public :: "+ macroName  + " = 1 \n";
+    }
+
 
     } else {
       outs() << "function is not supported yet\n";
@@ -379,16 +439,15 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     }
   } else if (isa<TypedefDecl> (d)) {
     TypedefDecl *tdd = cast<TypedefDecl> (d);
-    llvm::outs() << "found TypedefDecl \n";
-
     if (tdd->getSourceRange().getBegin().isValid()) {
       if (TheRewriter.getSourceMgr().isInSystemHeader(tdd->getSourceRange().getBegin())) {
         // type defs in header, skip for now
       } else {
         // type defs to be tranlated
-        outs() << "not isInSystemHeader\n";
+        outs() << "TypedefDecl not isInSystemHeader\n";
       }      
-    } else { // location not valid: top dummy type defs, skip for now
+    } else { 
+        // location not valid: top dummy type defs, skip for now
     }
 
   } else if (isa<RecordDecl> (d)) {
@@ -417,15 +476,15 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
       llvm::outs() << rdf.getFortranStructASString();
     } else {
       llvm::outs() << "not structure type\n";
+      llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
+      << " type: " << varDecl->getType().getAsString() << "\n";
     }
-
-    llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
-    << " type: " << varDecl->getType().getAsString() << "\n";
 
   } else if (isa<EnumDecl> (d)) {
     EnumDecl *enumDecl = cast<EnumDecl> (d);
     llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
   } else {
+
     llvm::outs() << "found other type of declaration \n";
     d->dump();
   }
@@ -451,57 +510,33 @@ bool TraverseNodeVisitor::TraverseType(QualType x) {
 
 //-----------PP Callbacks functions----------------------------------------------------------------------------------------------------
 
-// class Find_Includes : public PPCallbacks
-// {
-// public:
-//   bool has_include;
-
-//   void InclusionDirective(
-//     SourceLocation hash_loc,
-//     const Token &include_token,
-//     StringRef file_name,
-//     bool is_angled,
-//     CharSourceRange filename_range,
-//     const FileEntry *file,
-//     StringRef search_path,
-//     StringRef relative_path,
-//     const clang::Module *imported) {
-//     // do something with the include
-//     has_include = true;
-//     //const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(hash_loc));
-//     outs() << "found includes " << include_token.getLiteralData() << "\n";
-
-//   }
-// };
-
-
 class TraverseMacros : public PPCallbacks {
   CompilerInstance &ci;
   // SourceManager& SM;// = ci.getSourceManager();
   // Preprocessor &pp; // = ci.getPreprocessor();
-  int Indent;
-  llvm::formatted_raw_ostream FOuts;
+  // int Indent;
+  // llvm::formatted_raw_ostream FOuts;
 public:
 
   explicit TraverseMacros(CompilerInstance &ci)
-  : ci(ci), //SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
-  Indent(0), FOuts(llvm::outs()) {}
+  : ci(ci) {}//, SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
+  //Indent(0), FOuts(llvm::outs()) {}
 
-  void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
-    SourceManager& SM = ci.getSourceManager();
-    if (Reason != EnterFile && Reason != ExitFile)
-      return;
-    if (const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(loc))) {
-      if (Reason == EnterFile) {
-        FOuts << "Include Tree:";
-        FOuts.PadToColumn(13 + Indent * 2);
-        FOuts << FE->getName() << "\n";
-        Indent++;
-      } else if (Reason == ExitFile) {
-        Indent--;
-      }
-    }
-  };
+  // void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
+  //   SourceManager& SM = ci.getSourceManager();
+  //   if (Reason != EnterFile && Reason != ExitFile)
+  //     return;
+  //   if (const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(loc))) {
+  //     if (Reason == EnterFile) {
+  //       FOuts << "Include Tree:";
+  //       FOuts.PadToColumn(13 + Indent * 2);
+  //       FOuts << FE->getName() << "\n";
+  //       Indent++;
+  //     } else if (Reason == ExitFile) {
+  //       Indent--;
+  //     }
+  //   }
+  // };
 
   // conditional macros
   void  If (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue) {};

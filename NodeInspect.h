@@ -51,13 +51,17 @@ static cl::extrahelp MoreHelp("\nMore help text...");
 class CToFTypeFormatter {
 public:
   QualType c_qualType;
+  ASTContext &ac;
 
-  CToFTypeFormatter(QualType qt);
+  CToFTypeFormatter(QualType qt, ASTContext &ac);
   string getFortranTypeASString(bool typeWrapper);
   bool isSameType(QualType qt2);
-  static string getFortranTypeASString(string input, bool typeWrapper);
   static bool isAllDigit(const string input);
   static bool isString(const string input);
+  static bool isCharType(const string input);
+  static bool isIntType(const string input);
+  static bool isShortType(const string input);
+  static bool isLongType(const string input);
 };
 
 class RecordDeclFormatter {
