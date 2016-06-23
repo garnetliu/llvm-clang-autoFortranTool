@@ -95,6 +95,7 @@ public:
 class FunctionDeclFormatter {
 public:
   FunctionDecl *funcDecl;
+  bool isInSystemHeader;
 
   // Member functions declarations
   FunctionDeclFormatter(FunctionDecl *f, Rewriter &r);

@@ -153,6 +153,15 @@ FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rew
   funcDecl = f;
   returnQType = funcDecl->getReturnType();
   params = funcDecl->parameters();
+
+
+  if (rewriter.getSourceMgr().isInSystemHeader(funcDecl->getSourceRange().getBegin())) {
+    outs() << "funcDecl is in header\n";
+    isInSystemHeader = true;
+  } else {
+    outs() << "funcDecl is not in header\n";
+    isInSystemHeader = false;
+  }
 };
 
 string FunctionDeclFormatter::getParamsTypesASString() {
@@ -258,34 +267,37 @@ string FunctionDeclFormatter::getParamsNamesASString() {
 
 string FunctionDeclFormatter::getFortranFunctDeclASString() {
   string fortanFunctDecl;
-  string funcType;
-  string imports = "USE iso_c_binding, only: " + getParamsTypesASString();
-  // check if the return type is void or not
-  if (returnQType.getTypePtr()->isVoidType()) {
-    funcType = "SUBROUTINE";
-  } else {
-    CToFTypeFormatter tf(returnQType);
-    funcType = tf.getFortranTypeASString(true) + " FUNCTION";
-  }
-
-  fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
-  fortanFunctDecl += "\t" + imports + "\n";
-  fortanFunctDecl += getParamsDeclASString();
-  // preserve the function body as comment
-  if (funcDecl->hasBody()) {
-    Stmt *stmt = funcDecl->getBody();
-    clang::SourceManager &sm = rewriter.getSourceMgr();
-    // comment out the entire function {!body...}
-    string bodyText = Lexer::getSourceText(CharSourceRange::getTokenRange(stmt->getSourceRange()), sm, LangOptions(), 0);
-    string commentedBody = "! comment out function body by default \n";
-    std::istringstream in(bodyText);
-    for (std::string line; std::getline(in, line);) {
-      commentedBody += "! " + line + "\n";
+//  if (!isInSystemHeader) {
+    string funcType;
+    string imports = "USE iso_c_binding, only: " + getParamsTypesASString();
+    // check if the return type is void or not
+    if (returnQType.getTypePtr()->isVoidType()) {
+      funcType = "SUBROUTINE";
+    } else {
+      CToFTypeFormatter tf(returnQType);
+      funcType = tf.getFortranTypeASString(true) + " FUNCTION";
     }
-    fortanFunctDecl += commentedBody;
 
-  }
-  fortanFunctDecl += "END " + funcType + " " + funcDecl->getNameAsString() + "\n";
+    fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
+    fortanFunctDecl += "\t" + imports + "\n";
+    fortanFunctDecl += getParamsDeclASString();
+    // preserve the function body as comment
+    if (funcDecl->hasBody()) {
+      Stmt *stmt = funcDecl->getBody();
+      clang::SourceManager &sm = rewriter.getSourceMgr();
+      // comment out the entire function {!body...}
+      string bodyText = Lexer::getSourceText(CharSourceRange::getTokenRange(stmt->getSourceRange()), sm, LangOptions(), 0);
+      string commentedBody = "! comment out function body by default \n";
+      std::istringstream in(bodyText);
+      for (std::string line; std::getline(in, line);) {
+        commentedBody += "! " + line + "\n";
+      }
+      fortanFunctDecl += commentedBody;
+
+    }
+    fortanFunctDecl += "END " + funcType + " " + funcDecl->getNameAsString() + "\n";   
+//  }
+
 
 
   return fortanFunctDecl;
@@ -296,55 +308,38 @@ MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *m
     const MacroInfo *mi = md->getMacroInfo();
     SourceManager& SM = ci.getSourceManager();
 
-    // try {
-      if (SM.isInSystemHeader(mi->getDefinitionLoc())) {
-        outs() << "macro name isInSystemHeader\n";
-        isInSystemHeader = true;
-      } else {
-        outs() << "macro name is not isInSystemHeader\n";
-        isInSystemHeader = false;
-      }
-    // } catch (...) {
-    //   outs() << "cannot locate macro as literal";
-    //   isInSystemHeader = true;
-    // }
+    // define macro properties
+    isObjectOrFunction = mi->isObjectLike();
+//    isInSystemHeader = SM.isInSystemHeader(mi->getDefinitionLoc());
 
+    if (SM.isInSystemHeader(mi->getDefinitionLoc())) {
+      outs() << "macro name isInSystemHeader\n";
+      isInSystemHeader = true;
+    } else {
+      outs() << "macro name is not isInSystemHeader\n";
+      isInSystemHeader = false;
+    }
 
     // source text
     macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
     string macroDef = Lexer::getSourceText(CharSourceRange::getTokenRange(mi->getDefinitionLoc(), mi->getDefinitionEndLoc()), SM, LangOptions(), 0);
     
-
-
-    // there might be a "(" follows the macroName for function macros, remove it
+    // strangely there might be a "(" follows the macroName for function macros, remove it if there is
     if (macroName.back() == '(') {
       //outs() << "unwanted parenthesis found, remove it \n";
       macroName.erase(macroName.size()-1);
     }
 
-    if (mi->isFunctionLike()) {
-      isObjectOrFunction = false;
-    } else if (mi->isObjectLike()) {
-      isObjectOrFunction = true;
-
-      bool frontSpace = true;
-      for (size_t i = macroName.size(); i < macroDef.size(); i++) {
-        if (macroDef[i] != ' ') {
-          frontSpace = false;
-          macroVal += macroDef[i];
-        } else if (frontSpace == false) {
-          macroVal += macroDef[i];
-        }
+    // get value for object macro
+    bool frontSpace = true;
+    for (size_t i = macroName.size(); i < macroDef.size(); i++) {
+      if (macroDef[i] != ' ') {
+        frontSpace = false;
+        macroVal += macroDef[i];
+      } else if (frontSpace == false) {
+        macroVal += macroDef[i];
       }
-
-    // if (CToFTypeFormatter::isString(macroVal)) {
-    //   outs() << "value is string\n";
-    // } else {
-    //   outs() << "value is not string\n";
-    // }
-
     }
-
 }
 
 bool MacroFormatter::isObjectLike() {
@@ -362,14 +357,12 @@ string MacroFormatter::getFortranMacroASString() {
       // analyze type
       if (!macroVal.empty()) {
         if (CToFTypeFormatter::isNumeric(macroVal)) {
-          fortranMacro = "integer( c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          fortranMacro = "integer(c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
         } else if (CToFTypeFormatter::isString(macroVal)) {
         fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
       }
-    }
-
-      else {
-        fortranMacro = "<undecleared type>, parameter, public :: "+ macroName + "\n";
+    } else { // macroVal.empty(), make the object a bool positive
+        fortranMacro = "integer(c_int), parameter, public :: "+ macroName  + " = 1 \n";
       }
       
 
