@@ -55,7 +55,8 @@ public:
   CToFTypeFormatter(QualType qt);
   string getFortranTypeASString(bool typeWrapper);
   bool isSameType(QualType qt2);
-  static bool isNumeric(const string input);
+  static string getFortranTypeASString(string input, bool typeWrapper);
+  static bool isAllDigit(const string input);
   static bool isString(const string input);
 };
 
@@ -77,7 +78,7 @@ public:
 
   // Member functions declarations
   RecordDeclFormatter(RecordDecl *r);
-  void setMode(int m);
+  void setMode();
   void setTagName(string name);
   bool isStruct();
   bool isUnion();

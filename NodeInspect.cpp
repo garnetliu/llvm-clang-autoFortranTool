@@ -26,26 +26,20 @@ string RecordDeclFormatter::getFortranFields() {
       string identifier = (*it)->getNameAsString();
 
       fieldsInFortran += "\t" + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
-
-      // llvm::outs() << "identifier:" <<(*it)->getNameAsString() 
-      // << " type: " << (*it)->getType().getAsString()<< "\n";
     }
   }
   return fieldsInFortran;
 }
 
 string RecordDeclFormatter::getFortranStructASString() {
-  // struct name: recordDecl->getNameAsString()
-  // type,bind(c): (*it)->getNameAsString() if empty chang to (*it)->getType().getAsString()
-  // type(c_type) :: var1, var2...
-  // end type
+  // initalize mode here
+  setMode();
 
   string rd_buffer;
 
   if (mode == ID_ONLY) {
     string identifier = "struct_" + recordDecl->getNameAsString();
     string fieldsInFortran = getFortranFields();
-
     rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";
     
   } else if (mode == TAG_ONLY) {
@@ -64,18 +58,20 @@ string RecordDeclFormatter::getFortranStructASString() {
 
 };
 
-void RecordDeclFormatter::setMode(int m) {
+void RecordDeclFormatter::setMode() {
   // int ANONYMOUS = 0;
   // int ID_ONLY = 1;
   // int TAG_ONLY = 2;
   // int ID_TAG = 3;
 
-  if (mode == ID_ONLY and !tag_name.empty()) {
+  if (!(recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
     mode = ID_TAG;
-  } else if (mode == TAG_ONLY and m == ID_ONLY) {
-    mode = ID_TAG;
-  } else {
-    mode = m;
+  } else if (!(recordDecl->getNameAsString()).empty() and tag_name.empty()) {
+    mode = ID_ONLY;
+  } else if ((recordDecl->getNameAsString()).empty() and tag_name.empty()) {
+    mode = ANONYMOUS;
+  } else if ((recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
+    mode = TAG_ONLY;
   }
 };
 
@@ -84,7 +80,7 @@ CToFTypeFormatter::CToFTypeFormatter(QualType qt) {
 };
 
 bool CToFTypeFormatter::isSameType(QualType qt2) {
-  // for pointer type, only distinguish between the function pointer and other pointers
+  // for pointer type, only distinguish between the function pointer from other pointers
   if (c_qualType.getTypePtr()->isPointerType() and qt2.getTypePtr()->isPointerType()) {
     if (c_qualType.getTypePtr()->isFunctionPointerType() and qt2.getTypePtr()->isFunctionPointerType()) {
       return true;
@@ -134,8 +130,12 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
   return f_type;
 };
 
+string CToFTypeFormatter::getFortranTypeASString(string input, bool typeWrapper) {
 
-bool CToFTypeFormatter::isNumeric(const string input) {
+  return "";
+}
+
+bool CToFTypeFormatter::isAllDigit(const string input) {
   // "123L" "18446744073709551615ULL" "18446744073709551615UL" "1.23"
   return std::all_of(input.begin(), input.end(), ::isdigit);
 };
@@ -148,27 +148,21 @@ bool CToFTypeFormatter::isString(const string input) {
 };
 
 
-
+// -----------initializer FunctionDeclFormatter--------------------
 FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rewriter(r) {
   funcDecl = f;
   returnQType = funcDecl->getReturnType();
   params = funcDecl->parameters();
-
-
-  if (rewriter.getSourceMgr().isInSystemHeader(funcDecl->getSourceRange().getBegin())) {
-    outs() << "funcDecl is in header\n";
-    isInSystemHeader = true;
-  } else {
-    outs() << "funcDecl is not in header\n";
-    isInSystemHeader = false;
-  }
+  isInSystemHeader = rewriter.getSourceMgr().isInSystemHeader(funcDecl->getSourceRange().getBegin());
 };
 
+// for inserting types to "USE iso_c_binding, only: <<< c_ptr, c_int>>>""
 string FunctionDeclFormatter::getParamsTypesASString() {
   string paramsType;
   QualType prev_qt;
   std::vector<QualType> qts;
   bool first = true;
+  // loop through all arguments
   for (auto it = params.begin(); it != params.end(); it++) {
     if (first) {
       prev_qt = (*it)->getOriginalType();
@@ -223,6 +217,7 @@ string FunctionDeclFormatter::getParamsTypesASString() {
   return paramsType;
 }
 
+// for inserting variable decls "<<<type(c_ptr), value :: arg_1>>>"
 string FunctionDeclFormatter::getParamsDeclASString() { 
   string paramsDecl;
   int index = 1;
@@ -241,6 +236,7 @@ string FunctionDeclFormatter::getParamsDeclASString() {
   return paramsDecl;
 }
 
+// for inserting variable decls "getline(<<<arg_1, arg_2, arg_3>>>)"
 string FunctionDeclFormatter::getParamsNamesASString() { 
   string paramsNames;
   int index = 1;
@@ -265,9 +261,10 @@ string FunctionDeclFormatter::getParamsNamesASString() {
   return paramsNames;
 };
 
+// return the entire function decl in fortran
 string FunctionDeclFormatter::getFortranFunctDeclASString() {
   string fortanFunctDecl;
-//  if (!isInSystemHeader) {
+  if (!isInSystemHeader) {
     string funcType;
     string imports = "USE iso_c_binding, only: " + getParamsTypesASString();
     // check if the return type is void or not
@@ -295,30 +292,20 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
       fortanFunctDecl += commentedBody;
 
     }
-    fortanFunctDecl += "END " + funcType + " " + funcDecl->getNameAsString() + "\n";   
-//  }
-
-
+    fortanFunctDecl += "END " + funcDecl->getNameAsString() + "\n";   
+  }
 
   return fortanFunctDecl;
 };
 
-
+// -----------initializer MacroFormatter--------------------
 MacroFormatter::MacroFormatter(const Token MacroNameTok, const MacroDirective *md, CompilerInstance &ci) : md(md) { //, ci(ci) {
     const MacroInfo *mi = md->getMacroInfo();
     SourceManager& SM = ci.getSourceManager();
 
     // define macro properties
     isObjectOrFunction = mi->isObjectLike();
-//    isInSystemHeader = SM.isInSystemHeader(mi->getDefinitionLoc());
-
-    if (SM.isInSystemHeader(mi->getDefinitionLoc())) {
-      outs() << "macro name isInSystemHeader\n";
-      isInSystemHeader = true;
-    } else {
-      outs() << "macro name is not isInSystemHeader\n";
-      isInSystemHeader = false;
-    }
+    isInSystemHeader = SM.isInSystemHeader(mi->getDefinitionLoc());
 
     // source text
     macroName = Lexer::getSourceText(CharSourceRange::getTokenRange(MacroNameTok.getLocation(), MacroNameTok.getEndLoc()), SM, LangOptions(), 0);
@@ -349,6 +336,7 @@ bool MacroFormatter::isFunctionLike() {
   return !isObjectOrFunction;
 };
 
+// return the entire macro in fortran
 string MacroFormatter::getFortranMacroASString() {
   string fortranMacro;
   if (!isInSystemHeader) {
@@ -356,7 +344,7 @@ string MacroFormatter::getFortranMacroASString() {
     if (isObjectLike()) {
       // analyze type
       if (!macroVal.empty()) {
-        if (CToFTypeFormatter::isNumeric(macroVal)) {
+        if (CToFTypeFormatter::isAllDigit(macroVal)) {
           fortranMacro = "integer(c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
         } else if (CToFTypeFormatter::isString(macroVal)) {
         fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
@@ -382,24 +370,30 @@ string MacroFormatter::getFortranMacroASString() {
 bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
   if (isa<TranslationUnitDecl> (d)) {
     // tranlastion unit decl is the top node of all AST, ignore the inner structure of tud for now
-    llvm::outs() << "this is a TranslationUnitDecl\n";
     RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
-  } else if (isa<FunctionDecl> (d)) {
-        // create formatter
-    FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
-    // -------------------------------dump Fortran-------------------------------
-    llvm::outs() << fdf.getFortranFunctDeclASString()
-    << "\n";
 
+  } else if (isa<FunctionDecl> (d)) {
+    FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
+    if (!fdf.isInSystemHeader) {
+      llvm::outs() << fdf.getFortranFunctDeclASString() << "\n";      
+    }
   } else if (isa<TypedefDecl> (d)) {
-    //TypedefDecl *tdd = cast<TypedefDecl> (d);
+    TypedefDecl *tdd = cast<TypedefDecl> (d);
     llvm::outs() << "found TypedefDecl \n";
+
+    if (tdd->getSourceRange().getBegin().isValid()) {
+      if (TheRewriter.getSourceMgr().isInSystemHeader(tdd->getSourceRange().getBegin())) {
+        // type defs in header, skip for now
+      } else {
+        // type defs to be tranlated
+        outs() << "not isInSystemHeader\n";
+      }      
+    } else { // location not valid: top dummy type defs, skip for now
+    }
+
   } else if (isa<RecordDecl> (d)) {
     // struct
     RecordDeclFormatter rdf(cast<RecordDecl> (d));
-    RecordDecl *recordDecl = rdf.recordDecl;
-
-    // check if there is an identifier
 
     // // NOT WORKING!
     // if (recordDecl->isAnonymousStructOrUnion()) {
@@ -407,18 +401,10 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     // } else {
     //   llvm::outs() << "is not Anonymous\n"; 
     // }
-    if (!(recordDecl->getNameAsString()).empty()) {
-      rdf.setMode(rdf.ID_ONLY);
-    } 
+
     // assume struct, not considering union
+    llvm::outs() << rdf.getFortranStructASString();
 
-    // dump the fortran code
-    if (rdf.mode != rdf.ANONYMOUS) {
-      // struct has a identifier 
-      llvm::outs() << rdf.getFortranStructASString();
-    }
-
-    //RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
   } else if (isa<VarDecl> (d)) {
     VarDecl *varDecl = cast<VarDecl> (d);
 
@@ -426,14 +412,9 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
       // structure type
       RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
       RecordDeclFormatter rdf(rd);
-
-      if (!(rdf.recordDecl->getNameAsString()).empty()) {
-        rdf.setMode(rdf.ID_TAG);
-      }
       rdf.setTagName(varDecl->getNameAsString());
 
       llvm::outs() << rdf.getFortranStructASString();
-
     } else {
       llvm::outs() << "not structure type\n";
     }
@@ -445,11 +426,12 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     EnumDecl *enumDecl = cast<EnumDecl> (d);
     llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
   } else {
-    llvm::outs() << "found other declaration \n";
+    llvm::outs() << "found other type of declaration \n";
     d->dump();
   }
     // comment out because function declaration doesn't need to be traversed.
     // RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d); // Forward to base class
+
     return true; // Return false to stop the AST analyzing
 };
 
@@ -505,23 +487,6 @@ public:
   : ci(ci), //SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
   Indent(0), FOuts(llvm::outs()) {}
 
-  // void InclusionDirective(
-  //   SourceLocation hash_loc,
-  //   const Token &include_token,
-  //   StringRef file_name,
-  //   bool is_angled,
-  //   CharSourceRange filename_range,
-  //   const FileEntry *file,
-  //   StringRef search_path,
-  //   StringRef relative_path,
-  //   const clang::Module *imported) {
-  //   // do something with the include
-  //   //bool has_include = true;
-  //   //const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(hash_loc));
-  //   outs() << "found includes " << include_token.getLiteralData() << "\n";
-
-  // };
-
   void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
     SourceManager& SM = ci.getSourceManager();
     if (Reason != EnterFile && Reason != ExitFile)
@@ -553,13 +518,11 @@ public:
     // #else
     // int b;
     // #endif
-
   };
 
   void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
     MacroFormatter mf(MacroNameTok, MD, ci);
     outs() << mf.getFortranMacroASString();
-
   }
 
 };
@@ -571,11 +534,18 @@ public:
   TraverseNodeConsumer(Rewriter &R) : Visitor(R) {}
 
   virtual void HandleTranslationUnit(clang::ASTContext &Context) {
-// Traversing the translation unit decl via a RecursiveASTVisitor
-// will visit all nodes in the AST.
-    llvm::outs() << "start traversing first declaration \n";
+  // Traversing the translation unit decl via a RecursiveASTVisitor
+  // will visit all nodes in the AST.
+
+    // initalize interface
+    string beginSourceInterface = "INTERFACE\n";
+    llvm::outs() << beginSourceInterface;
+
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
-    llvm::outs() << "finished traversing last declaration \n";
+
+    // end interface
+    string endSourceInterface = "END INTERFACE\n";
+    llvm::outs() << endSourceInterface;
   }
 
 private:
@@ -588,12 +558,26 @@ public:
   TraverseNodeAction() {}
 
   // // for macros inspection
-  bool BeginSourceFileAction(CompilerInstance &ci, StringRef) override
+  bool BeginSourceFileAction(CompilerInstance &ci, StringRef Filename) override
   {
+    // get module name
+    fullPathFileName = Filename;
+    size_t slashes = Filename.find_last_of("/\\");
+    string filename = Filename.substr(slashes+1);
+    size_t dot = filename.find('.');
+    string moduleName = filename.substr(0, dot);
+
+    // initalize Module and imports
+    string beginSourceModule;
+    beginSourceModule = "MODULE " + moduleName + "\n";
+    beginSourceModule += "USE, INTRINSIC :: iso_c_binding\n";
+    beginSourceModule += "implicit none\n";
+    outs() << beginSourceModule;
+
+
     // std::unique_ptr<Find_Includes> find_includes_callback(new Find_Includes());
     // Preprocessor &pp = ci.getPreprocessor();
     // pp.addPPCallbacks(std::move(find_includes_callback));
-
     Preprocessor &pp = ci.getPreprocessor();
     //pp.addPPCallbacks(llvm::make_unique<TraverseMacros>(ci.getSourceManager()));
     pp.addPPCallbacks(llvm::make_unique<TraverseMacros>(ci));
@@ -601,20 +585,18 @@ public:
     return true;
   }
 
-//   void EndSourceFileAction()
-//   {
-//     CompilerInstance &ci = getCompilerInstance();
-//     Preprocessor &pp = ci.getPreprocessor();
-//     Find_Includes *find_includes_callback = dynamic_cast<Find_Includes *>(pp.getPPCallbacks());
-
-//     // do whatever you want with the callback now
-//     if (find_includes_callback->has_include)
-//       llvm::outs() << "Found at least one include\n";
-//   }
-
   void EndSourceFileAction() override {
     //Now emit the rewritten buffer.
     //TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(llvm::outs());
+    
+    size_t slashes = fullPathFileName.find_last_of("/\\");
+    string filename = fullPathFileName.substr(slashes+1);
+    size_t dot = filename.find('.');
+    string moduleName = filename.substr(0, dot);
+
+    string endSourceModle;
+    endSourceModle = "END MODULE " + moduleName + "\n";
+    outs() << endSourceModle;
   }
 
   std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
@@ -625,6 +607,7 @@ public:
 
 private:
   Rewriter TheRewriter;
+  string fullPathFileName;
 };
 
 int main(int argc, const char **argv) {
