@@ -55,6 +55,7 @@ public:
 
   CToFTypeFormatter(QualType qt, ASTContext &ac);
   string getFortranTypeASString(bool typeWrapper);
+  string getFortranIdASString(string raw_id);
   bool isSameType(QualType qt2);
   static bool isAllDigit(const string input);
   static bool isString(const string input);
@@ -77,11 +78,12 @@ public:
   int mode = ANONYMOUS;
   bool structOrUnion = STRUCT;
   string tag_name;
+  bool isInSystemHeader;
 
 
 
   // Member functions declarations
-  RecordDeclFormatter(RecordDecl *r);
+  RecordDeclFormatter(RecordDecl *rd, Rewriter &r);
   void setMode();
   void setTagName(string name);
   bool isStruct();
@@ -91,7 +93,8 @@ public:
 
 
 
-// private:
+private:
+  Rewriter &rewriter;
   
 };
 

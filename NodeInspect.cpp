@@ -2,79 +2,7 @@
 
 //-----------formatter functions----------------------------------------------------------------------------------------------------
 
-RecordDeclFormatter::RecordDeclFormatter(RecordDecl *r) {
-  recordDecl = r;
-};
-
-bool RecordDeclFormatter::isStruct() {
-  return structOrUnion == STRUCT;
-};
-
-bool RecordDeclFormatter::isUnion() {
-  return structOrUnion == UNION;
-};
-
-void RecordDeclFormatter::setTagName(string name) {
-  tag_name = name;
-}
-
-string RecordDeclFormatter::getFortranFields() {
-  string fieldsInFortran = "";
-  if (!recordDecl->field_empty()) {
-    for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
-      CToFTypeFormatter tf((*it)->getType(), recordDecl->getASTContext());
-      string identifier = (*it)->getNameAsString();
-
-      fieldsInFortran += "\t" + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
-    }
-  }
-  return fieldsInFortran;
-}
-
-string RecordDeclFormatter::getFortranStructASString() {
-  // initalize mode here
-  setMode();
-
-  string rd_buffer;
-
-  if (mode == ID_ONLY) {
-    string identifier = "struct_" + recordDecl->getNameAsString();
-    string fieldsInFortran = getFortranFields();
-    rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";
-    
-  } else if (mode == TAG_ONLY) {
-    string identifier = tag_name;
-    string fieldsInFortran = getFortranFields();
-
-    rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";
-  } else if (mode == ID_TAG) {
-    string identifier = tag_name;
-    string fieldsInFortran = getFortranFields();
-
-    rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE\n";    
-  }
-
-  return rd_buffer;
-
-};
-
-void RecordDeclFormatter::setMode() {
-  // int ANONYMOUS = 0;
-  // int ID_ONLY = 1;
-  // int TAG_ONLY = 2;
-  // int ID_TAG = 3;
-
-  if (!(recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
-    mode = ID_TAG;
-  } else if (!(recordDecl->getNameAsString()).empty() and tag_name.empty()) {
-    mode = ID_ONLY;
-  } else if ((recordDecl->getNameAsString()).empty() and tag_name.empty()) {
-    mode = ANONYMOUS;
-  } else if ((recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
-    mode = TAG_ONLY;
-  }
-};
-
+// -----------initializer RecordDeclFormatter--------------------
 CToFTypeFormatter::CToFTypeFormatter(QualType qt, ASTContext &ac): ac(ac) {
   c_qualType = qt;
 };
@@ -89,66 +17,167 @@ bool CToFTypeFormatter::isSameType(QualType qt2) {
     } else {
       return false;
     }
-  } else if (c_qualType.getTypePtr()->isIntegerType() and qt2.getTypePtr()->isIntegerType()) {
-    // consider size_t and int
-    return true;
   } else {
     return c_qualType == qt2;
   }
 };
 
+string CToFTypeFormatter::getFortranIdASString(string raw_id) {
+  if (c_qualType.getTypePtr()->isArrayType()) {
+    const ArrayType *at = c_qualType.getTypePtr()->getAsArrayTypeUnsafe ();
+    QualType e_qualType = at->getElementType ();
+    int typeSize = ac.getTypeSizeInChars(c_qualType).getQuantity();
+    int elementSize = ac.getTypeSizeInChars(e_qualType).getQuantity();
+    int numOfEle = typeSize / elementSize;
+    string arr_suffix = "(" + to_string(numOfEle) + ")";
+    raw_id += arr_suffix;
+  }
+  return raw_id;
+};
+
 string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
   string f_type;
-  // support int, c_ptr
-  // int -> ineteger(c_int), VALUE
-  if (c_qualType.getTypePtr()->isIntegerType()) {
+
+      // char
+  if (c_qualType.getTypePtr()->isCharType()) {
     if (typeWrapper) {
-      f_type = "integer(c_int)";
+      f_type = "CHARACTER(C_CHAR)";
     } else {
-      f_type = "c_int";
+      f_type = "C_CHAR";
     }
+    // INT
+  } else if (c_qualType.getTypePtr()->isIntegerType()) {
+    //int typeSize = ac.getTypeSizeInChars(c_qualType).getQuantity();
+    // diff int type may have same size so use stirng matching for now
+     if (c_qualType.getAsString()== "size_t") {
+      // size_t
+      if (typeWrapper) {
+        f_type = "INTEGER(C_SIZE_T)";
+      } else {
+        f_type = "C_SIZE_T";
+      }
+    } else if (c_qualType.getAsString()== "unsigned char" or c_qualType.getAsString()== "signed char") {
+      // signed/unsigned char
+      if (typeWrapper) {
+        f_type = "INTEGER(C_SIGNED_CHAR)";
+      } else {
+        f_type = "C_SIGNED_CHAR";
+      }        
+    } else if (c_qualType.getAsString().find("short") != std::string::npos) {
+      // short
+      if (typeWrapper) {
+        f_type = "INTEGER(C_SHORT)";
+      } else {
+        f_type = "C_SHORT";
+      }  
+    } else if (c_qualType.getAsString().find("long") != std::string::npos) {
+      // long or long long, assume long
+      if (typeWrapper) {
+        f_type = "INTEGER(C_LONG)";
+      } else {
+        f_type = "C_LONG";
+      }      
+    } else {
+      // other int so just assume int
+      if (typeWrapper) {
+        f_type = "INTEGER(C_INT)";
+      } else {
+        f_type = "C_INT";
+      }      
+    }
+
+    // REAL
   } else if (c_qualType.getTypePtr()->isRealType()) {
-    if (typeWrapper) {
-      f_type = "real(c_double)";
+
+    if (c_qualType.getAsString().find("long") != std::string::npos) {
+      // long double
+      if (typeWrapper) {
+        f_type = "REAL(C_LONG_DOUBLE)";
+      } else {
+        f_type = "C_LONG_DOUBLE";
+      } 
+    } else if (c_qualType.getAsString()== "float") {
+      // float
+      if (typeWrapper) {
+        f_type = "REAL(C_FLOAT)";
+      } else {
+        f_type = "C_FLOAT";
+      }
+    } else if (c_qualType.getAsString()== "__float128") {
+      // __float128
+      if (typeWrapper) {
+        f_type = "REAL(C_FLOAT128)";
+      } else {
+        f_type = "C_FLOAT128";
+      }
     } else {
-      f_type = "c_double";
+      // should be double
+      if (typeWrapper) {
+        f_type = "REAL(C_DOUBLE)";
+      } else {
+        f_type = "C_DOUBLE";
+      }      
     }
+    // COMPLEX
+  } else if (c_qualType.getTypePtr()->isComplexType ()) {
+    if (c_qualType.getAsString().find("float") != std::string::npos) {
+      //  float _Complex 
+      if (typeWrapper) {
+        f_type = "COMPLEX(C_FLOAT_COMPLEX)";
+      } else {
+        f_type = "C_FLOAT_COMPLEX";
+      }        
+    } else if (c_qualType.getAsString().find("long") != std::string::npos) {
+       //  long double _Complex 
+      if (typeWrapper) {
+        f_type = "COMPLEX(C_LONG_DOUBLE_COMPLEX)";
+      } else {
+        f_type = "C_LONG_DOUBLE_COMPLEX";
+      }
+    } else {
+      // assume double _Complex 
+      if (typeWrapper) {
+        f_type = "COMPLEX(C_DOUBLE_COMPLEX)";
+      } else {
+        f_type = "C_DOUBLE_COMPLEX";
+      }
+    }
+    // POINTER
   } else if (c_qualType.getTypePtr()->isPointerType ()) {
     if (c_qualType.getTypePtr()->isFunctionPointerType()){
       if (typeWrapper) {
-        f_type = "type(c_funptr)";
+        f_type = "TYPE(C_FUNPTR)";
       } else {
-        f_type = "c_funptr";
+        f_type = "C_FUNPTR";
       }
     } else {
       if (typeWrapper) {
-        f_type = "type(c_ptr)";
+        f_type = "TYPE(C_PTR)";
       } else {
-        f_type = "c_ptr";
+        f_type = "C_PTR";
       }
     }
+    // ARRAY
   } else if (c_qualType.getTypePtr()->isArrayType()) {
     const ArrayType *at = c_qualType.getTypePtr()->getAsArrayTypeUnsafe ();
+    // recursively get element type
     QualType e_qualType = at->getElementType ();
-    if (e_qualType.getTypePtr()->isCharType()) {
-      if (typeWrapper) {
-        f_type = "character(c_char)";
-      } else {
-        f_type = "c_char";
-      }
-    } else {
-      f_type = "array type (" + e_qualType.getAsString()+")";
-    }
-  }
-  //  else if (c_qualType.getTypePtr()->isAnyCharacterType()) {
-  //   if (typeWrapper) {
-  //     f_type = "character(c_char)";
-  //   } else {
-  //     f_type = "c_char";
-  //   }
-  // }
+    CToFTypeFormatter etf(e_qualType, ac);
 
-  else {
+    f_type = etf.getFortranTypeASString(typeWrapper);
+  } else if (c_qualType.getTypePtr()->isStructureType()) {
+    // struct type
+    f_type = c_qualType.getAsString();
+    // replace space with underscore 
+    size_t found = f_type.find_first_of(" ");
+    while (found!=string::npos) {
+      f_type[found]='_';
+      found=f_type.find_first_of(" ",found+1);
+    }
+    if (typeWrapper) {
+      f_type = "TYPE(" + f_type + ")";
+    } 
+  } else {
     f_type = "type not yet implemented (" + c_qualType.getAsString()+")";
   }
   return f_type;
@@ -195,6 +224,85 @@ bool CToFTypeFormatter::isLongType(const string input) {
   }
   return false;
 };
+
+// -----------initializer RecordDeclFormatter--------------------
+
+RecordDeclFormatter::RecordDeclFormatter(RecordDecl* rd, Rewriter &r) : rewriter(r) {
+  recordDecl = rd;
+  isInSystemHeader = rewriter.getSourceMgr().isInSystemHeader(recordDecl->getSourceRange().getBegin());
+};
+
+bool RecordDeclFormatter::isStruct() {
+  return structOrUnion == STRUCT;
+};
+
+bool RecordDeclFormatter::isUnion() {
+  return structOrUnion == UNION;
+};
+
+void RecordDeclFormatter::setTagName(string name) {
+  tag_name = name;
+}
+
+string RecordDeclFormatter::getFortranFields() {
+  string fieldsInFortran = "";
+  if (!recordDecl->field_empty()) {
+    for (auto it = recordDecl->field_begin(); it != recordDecl->field_end(); it++) {
+      CToFTypeFormatter tf((*it)->getType(), recordDecl->getASTContext());
+      string identifier = tf.getFortranIdASString((*it)->getNameAsString());
+
+      fieldsInFortran += "\t" + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
+    }
+  }
+  return fieldsInFortran;
+}
+
+string RecordDeclFormatter::getFortranStructASString() {
+  // initalize mode here
+  setMode();
+
+  string rd_buffer;
+  if (!isInSystemHeader) {
+    if (mode == ID_ONLY) {
+      string identifier = "struct_" + recordDecl->getNameAsString();
+      string fieldsInFortran = getFortranFields();
+      rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
+      
+    } else if (mode == TAG_ONLY) {
+      string identifier = tag_name;
+      string fieldsInFortran = getFortranFields();
+
+      rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
+    } else if (mode == ID_TAG) {
+      string identifier = tag_name;
+      string fieldsInFortran = getFortranFields();
+
+      rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";    
+    }
+
+    
+  }
+  return rd_buffer;    
+};
+
+void RecordDeclFormatter::setMode() {
+  // int ANONYMOUS = 0;
+  // int ID_ONLY = 1;
+  // int TAG_ONLY = 2;
+  // int ID_TAG = 3;
+
+  if (!(recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
+    mode = ID_TAG;
+  } else if (!(recordDecl->getNameAsString()).empty() and tag_name.empty()) {
+    mode = ID_ONLY;
+  } else if ((recordDecl->getNameAsString()).empty() and tag_name.empty()) {
+    mode = ANONYMOUS;
+  } else if ((recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
+    mode = TAG_ONLY;
+  }
+};
+
+
 
 // -----------initializer FunctionDeclFormatter--------------------
 FunctionDeclFormatter::FunctionDeclFormatter(FunctionDecl *f, Rewriter &r) : rewriter(r) {
@@ -299,9 +407,6 @@ string FunctionDeclFormatter::getParamsNamesASString() {
       paramsNames += pname;
     } else { // parameters in between
     // if the param name is empty, rename it to arg_index
-      //uint64_t  getTypeSize (QualType T) const for array!!!
-      //       outs() << " c_qualType size:" << ac.getTypeSize(c_qualType)
-      // << "e_qualType size: " << ac.getTypeSize(e_qualType) <<"\n";
     string pname = (*it)->getNameAsString();
     if (pname.empty()) {
       pname = "arg_" + to_string(index);
@@ -336,7 +441,7 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
       clang::SourceManager &sm = rewriter.getSourceMgr();
       // comment out the entire function {!body...}
       string bodyText = Lexer::getSourceText(CharSourceRange::getTokenRange(stmt->getSourceRange()), sm, LangOptions(), 0);
-      string commentedBody = "! comment out function body by default \n";
+      string commentedBody = "! function body \n";
       std::istringstream in(bodyText);
       for (std::string line; std::getline(in, line);) {
         commentedBody += "! " + line + "\n";
@@ -396,10 +501,10 @@ string MacroFormatter::getFortranMacroASString() {
     if (isObjectLike()) {
       // analyze type
       if (!macroVal.empty()) {
-        if (CToFTypeFormatter::isAllDigit(macroVal)) {
-          fortranMacro = "integer(c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-        } else if (CToFTypeFormatter::isString(macroVal)) {
+        if (CToFTypeFormatter::isString(macroVal)) {
           fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+        } else if (CToFTypeFormatter::isAllDigit(macroVal)) {
+          fortranMacro = "integer(c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
         } else if (CToFTypeFormatter::isLongType(macroVal)) {
           // format type def
         } else if (CToFTypeFormatter::isShortType(macroVal)) {
@@ -407,7 +512,7 @@ string MacroFormatter::getFortranMacroASString() {
         } else if (CToFTypeFormatter::isIntType(macroVal)) {
           // format type def
         } else {
-          outs() << "type not supported yet\n";
+          outs() << "!macro type not supported yet\n";
         }
     } else { // macroVal.empty(), make the object a bool positive
       fortranMacro = "integer(c_int), parameter, public :: "+ macroName  + " = 1 \n";
@@ -415,8 +520,18 @@ string MacroFormatter::getFortranMacroASString() {
 
 
     } else {
-      outs() << "function is not supported yet\n";
-    }    
+        // function macro
+      if (md->getMacroInfo()->arg_empty()) {
+        outs() << "args are empty\n";
+      } else {
+        for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
+          outs() << " getName () " << (*it)->getName();
+        }
+        for (auto it = md->getMacroInfo()->tokens_begin (); it != md->getMacroInfo()->tokens_end (); it++) {
+          outs() << " token: " << (*it).getName();
+        }
+      }    
+    }
   }
 
 
@@ -435,7 +550,10 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
   } else if (isa<FunctionDecl> (d)) {
     FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
     if (!fdf.isInSystemHeader) {
-      llvm::outs() << fdf.getFortranFunctDeclASString() << "\n";      
+
+      llvm::outs() << "INTERFACE\n" 
+      << fdf.getFortranFunctDeclASString() << "\n"
+      << "END INTERFACE\n";      
     }
   } else if (isa<TypedefDecl> (d)) {
     TypedefDecl *tdd = cast<TypedefDecl> (d);
@@ -444,22 +562,22 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
         // type defs in header, skip for now
       } else {
         // type defs to be tranlated
-        outs() << "TypedefDecl not isInSystemHeader\n";
+        string sourceText = Lexer::getSourceText(CharSourceRange::getTokenRange(tdd->getSourceRange()), TheRewriter.getSourceMgr(), LangOptions(), 0);
+        string typeDefStr = "! type def content \n";
+        std::istringstream in(sourceText);
+        for (std::string line; std::getline(in, line);) {
+          typeDefStr += "! " + line + "\n";
+        }
+        outs() << typeDefStr;
       }      
     } else { 
-        // location not valid: top dummy type defs, skip for now
+        // location not valid: top dummy type defs at top of the file, skip for now
     }
 
   } else if (isa<RecordDecl> (d)) {
     // struct
-    RecordDeclFormatter rdf(cast<RecordDecl> (d));
-
-    // // NOT WORKING!
-    // if (recordDecl->isAnonymousStructOrUnion()) {
-    //   llvm::outs() << "is Anonymous\n"; 
-    // } else {
-    //   llvm::outs() << "is not Anonymous\n"; 
-    // }
+    RecordDeclFormatter rdf(cast<RecordDecl> (d), TheRewriter);
+    // recordDecl->isAnonymousStructOrUnion() NOT WORKING!
 
     // assume struct, not considering union
     llvm::outs() << rdf.getFortranStructASString();
@@ -470,14 +588,19 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     if (varDecl->getType().getTypePtr()->isStructureType()) {
       // structure type
       RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
-      RecordDeclFormatter rdf(rd);
+      RecordDeclFormatter rdf(rd, TheRewriter);
       rdf.setTagName(varDecl->getNameAsString());
 
       llvm::outs() << rdf.getFortranStructASString();
     } else {
-      llvm::outs() << "not structure type\n";
-      llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
-      << " type: " << varDecl->getType().getAsString() << "\n";
+      if (TheRewriter.getSourceMgr().isInSystemHeader(varDecl->getSourceRange().getBegin())) {
+        // should skip  "variable decl in system header\n";
+      } else {
+        llvm::outs() << "not structure type\n";
+        llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
+        << " type: " << varDecl->getType().getAsString() << "\n";        
+      }
+
     }
 
   } else if (isa<EnumDecl> (d)) {
@@ -538,12 +661,12 @@ public:
   //   }
   // };
 
-  // conditional macros
-  void  If (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue) {};
-  void  Elif (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue, SourceLocation IfLoc) {};
-  void  Ifdef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
-  void  Ifndef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
-  void  Else (SourceLocation Loc, SourceLocation IfLoc) {};
+  // // conditional macros
+  // void  If (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue) {};
+  // void  Elif (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue, SourceLocation IfLoc) {};
+  // void  Ifdef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
+  // void  Ifndef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
+  // void  Else (SourceLocation Loc, SourceLocation IfLoc) {};
 
 
   void MacroExpands (const Token &MacroNameTok, const MacroDefinition &MD, SourceRange Range, const MacroArgs *Args) {
@@ -572,15 +695,7 @@ public:
   // Traversing the translation unit decl via a RecursiveASTVisitor
   // will visit all nodes in the AST.
 
-    // initalize interface
-    string beginSourceInterface = "INTERFACE\n";
-    llvm::outs() << beginSourceInterface;
-
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
-
-    // end interface
-    string endSourceInterface = "END INTERFACE\n";
-    llvm::outs() << endSourceInterface;
   }
 
 private:
