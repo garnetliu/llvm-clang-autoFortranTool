@@ -45,6 +45,12 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
     } else {
       f_type = "C_CHAR";
     }
+  } else if (c_qualType.getTypePtr()->isBooleanType()) {
+    if (typeWrapper) {
+      f_type = "LOGICAL(C_BOOL)";
+    } else {
+      f_type = "C_BOOL";
+    }
     // INT
   } else if (c_qualType.getTypePtr()->isIntegerType()) {
     //int typeSize = ac.getTypeSizeInChars(c_qualType).getQuantity();
@@ -178,7 +184,7 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
       f_type = "TYPE(" + f_type + ")";
     } 
   } else {
-    f_type = "type not yet implemented (" + c_qualType.getAsString()+")";
+    f_type = "unrecognized_type(" + c_qualType.getAsString()+")";
   }
   return f_type;
 };
@@ -263,24 +269,40 @@ string RecordDeclFormatter::getFortranStructASString() {
 
   string rd_buffer;
   if (!isInSystemHeader) {
+    string fieldsInFortran = getFortranFields();
+    if (fieldsInFortran.empty()) {
+      rd_buffer = "! struct without fields may cause warning\n";
+    }
+
     if (mode == ID_ONLY) {
       string identifier = "struct_" + recordDecl->getNameAsString();
-      string fieldsInFortran = getFortranFields();
-      rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
+      
+      rd_buffer += "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
       
     } else if (mode == TAG_ONLY) {
       string identifier = tag_name;
-      string fieldsInFortran = getFortranFields();
 
-      rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
+      rd_buffer += "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
     } else if (mode == ID_TAG) {
       string identifier = tag_name;
-      string fieldsInFortran = getFortranFields();
 
-      rd_buffer = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";    
+      rd_buffer += "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";    
+    } else if (mode == ANONYMOUS) {
+      string identifier = recordDecl->getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
+      // replace space with underscore 
+      size_t found = identifier.find_first_of(" ");
+      while (found!=string::npos) {
+        identifier[found]='_';
+        found=identifier.find_first_of(" ",found+1);
+      }
+      rd_buffer += "! ANONYMOUS struct is commented out, it may or may not have a declared name\n";
+      string temp_buf = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
+      // comment out temp_buf
+      std::istringstream in(temp_buf);
+      for (std::string line; std::getline(in, line);) {
+        rd_buffer += "! " + line + "\n";
+      }
     }
-
-    
   }
   return rd_buffer;    
 };
@@ -301,6 +323,9 @@ void RecordDeclFormatter::setMode() {
     mode = TAG_ONLY;
   }
 };
+
+
+// };
 
 
 
@@ -449,7 +474,12 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
       fortanFunctDecl += commentedBody;
 
     }
-    fortanFunctDecl += "END " + funcDecl->getNameAsString() + "\n";   
+    if (returnQType.getTypePtr()->isVoidType()) {
+      fortanFunctDecl += "END SUBROUTINE " + funcDecl->getNameAsString() + "\n";   
+    } else {
+      fortanFunctDecl += "END FUNCTION " + funcDecl->getNameAsString() + "\n";
+    }
+    
   }
 
   return fortanFunctDecl;
@@ -502,9 +532,14 @@ string MacroFormatter::getFortranMacroASString() {
       // analyze type
       if (!macroVal.empty()) {
         if (CToFTypeFormatter::isString(macroVal)) {
-          fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          if (macroName[0] == '_') {
+            fortranMacro = "! underscore is an invalid character in name, so commented\n";
+            fortranMacro += "!CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          } else {
+            fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          }
         } else if (CToFTypeFormatter::isAllDigit(macroVal)) {
-          fortranMacro = "integer(c_int), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
         } else if (CToFTypeFormatter::isLongType(macroVal)) {
           // format type def
         } else if (CToFTypeFormatter::isShortType(macroVal)) {
@@ -515,7 +550,12 @@ string MacroFormatter::getFortranMacroASString() {
           outs() << "!macro type not supported yet\n";
         }
     } else { // macroVal.empty(), make the object a bool positive
-      fortranMacro = "integer(c_int), parameter, public :: "+ macroName  + " = 1 \n";
+      if (macroName[0] == '_') {
+        fortranMacro = "! underscore is an invalid character in name, so commented\n";
+        fortranMacro += "!INTEGER(C_INT), parameter, public :: "+ macroName  + " = 1 \n";
+      } else {
+        fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName  + " = 1 \n";
+      }
     }
 
 
@@ -552,7 +592,7 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     if (!fdf.isInSystemHeader) {
 
       llvm::outs() << "INTERFACE\n" 
-      << fdf.getFortranFunctDeclASString() << "\n"
+      << fdf.getFortranFunctDeclASString()
       << "END INTERFACE\n";      
     }
   } else if (isa<TypedefDecl> (d)) {
@@ -575,12 +615,15 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     }
 
   } else if (isa<RecordDecl> (d)) {
-    // struct
-    RecordDeclFormatter rdf(cast<RecordDecl> (d), TheRewriter);
-    // recordDecl->isAnonymousStructOrUnion() NOT WORKING!
+    RecordDecl *rd = cast<RecordDecl> (d);
+    if (rd->isStruct()) {// struct
+      RecordDeclFormatter rdf(rd, TheRewriter);
+      // recordDecl->isAnonymousStructOrUnion() NOT WORKING!
+      llvm::outs() << rdf.getFortranStructASString();      
+    } else {// assume struct, not considering union
+      outs() << "! RecordDecl is not struct\n";
+    }
 
-    // assume struct, not considering union
-    llvm::outs() << rdf.getFortranStructASString();
 
   } else if (isa<VarDecl> (d)) {
     VarDecl *varDecl = cast<VarDecl> (d);
@@ -592,12 +635,15 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
       rdf.setTagName(varDecl->getNameAsString());
 
       llvm::outs() << rdf.getFortranStructASString();
-    } else {
+    } 
+
+
+
+    else {
       if (TheRewriter.getSourceMgr().isInSystemHeader(varDecl->getSourceRange().getBegin())) {
         // should skip  "variable decl in system header\n";
       } else {
-        llvm::outs() << "not structure type\n";
-        llvm::outs() << "found VarDecl " << varDecl->getNameAsString() 
+        llvm::outs() << "found Other VarDecl " << varDecl->getNameAsString() 
         << " type: " << varDecl->getType().getAsString() << "\n";        
       }
 
