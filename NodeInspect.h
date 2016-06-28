@@ -57,12 +57,11 @@ public:
   string getFortranTypeASString(bool typeWrapper);
   string getFortranIdASString(string raw_id);
   bool isSameType(QualType qt2);
-  static bool isAllDigit(const string input);
+  static bool isIntLike(const string input);
+  static bool isDoubleLike(const string input);
+  static bool isType(const string input);
   static bool isString(const string input);
-  static bool isCharType(const string input);
-  static bool isIntType(const string input);
-  static bool isShortType(const string input);
-  static bool isLongType(const string input);
+  static string createFortranType(const string macroName, const string macroVal);
 };
 
 class RecordDeclFormatter {
@@ -124,6 +123,7 @@ public:
   const MacroDirective *md;
   string macroName;
   string macroVal;
+  string macroDef;
   bool isInSystemHeader;
 
   MacroFormatter(const Token MacroNameTok, const MacroDirective *md, CompilerInstance &ci);
