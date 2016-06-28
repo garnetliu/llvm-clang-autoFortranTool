@@ -626,53 +626,53 @@ string MacroFormatter::getFortranMacroASString() {
   }
 
 
-//  if (!isInSystemHeader) {
+  if (!isInSystemHeader) {
     // handle object first
     if (isObjectLike()) {
-    //   // analyze type
-    //   if (!macroVal.empty()) {
-    //     if (CToFTypeFormatter::isString(macroVal)) {
-    //       if (macroName[0] == '_') {
-    //         fortranMacro = "! underscore is invalid character name\n";
-    //         fortranMacro += "!CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-    //       } else {
-    //         fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-    //       }
+      // analyze type
+      if (!macroVal.empty()) {
+        if (CToFTypeFormatter::isString(macroVal)) {
+          if (macroName[0] == '_') {
+            fortranMacro = "! underscore is invalid character name\n";
+            fortranMacro += "!CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          } else {
+            fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          }
         
-    //     } else if (CToFTypeFormatter::isIntLike(macroVal)) {
-    //       // invalid chars
-    //       if (macroVal.find_first_of("ULx") != std::string::npos or macroName[0] == '_') {
-    //         fortranMacro = "!INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-    //       } else {
-    //         fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-    //       }
+        } else if (CToFTypeFormatter::isIntLike(macroVal)) {
+          // invalid chars
+          if (macroVal.find_first_of("ULx") != std::string::npos or macroName[0] == '_') {
+            fortranMacro = "!INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          } else {
+            fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          }
 
-    //     } else if (CToFTypeFormatter::isDoubleLike(macroVal) or macroName[0] == '_') {
-    //       if (macroVal.find_first_of("eFUL") != std::string::npos) {
-    //         fortranMacro = "!REAL(C_DOUBLE), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-    //       } else {
-    //         fortranMacro = "REAL(C_DOUBLE), parameter, public :: "+ macroName + " = " + macroVal + "\n";
-    //       }
+        } else if (CToFTypeFormatter::isDoubleLike(macroVal)) {
+          if (macroVal.find_first_of("eFUL") != std::string::npos or macroName[0] == '_') {
+            fortranMacro = "!REAL(C_DOUBLE), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          } else {
+            fortranMacro = "REAL(C_DOUBLE), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          }
           
-    //     } else if (CToFTypeFormatter::isType(macroVal)) {
-    //       // only support int short long char for now
-    //       fortranMacro = CToFTypeFormatter::createFortranType(macroName, macroVal);
+        } else if (CToFTypeFormatter::isType(macroVal)) {
+          // only support int short long char for now
+          fortranMacro = CToFTypeFormatter::createFortranType(macroName, macroVal);
 
-    //     } else {
-    //       fortranMacro =  "! unrecognized macro. Possibly identifer macro\n";
-    //       std::istringstream in(macroDef);
-    //       for (std::string line; std::getline(in, line);) {
-    //         fortranMacro += "! " + line + "\n";
-    //       }
-    //     }
-    // } else { // macroVal.empty(), make the object a bool positive
-    //   if (macroName[0] == '_') {
-    //     fortranMacro = "! underscore is invalid character name\n";
-    //     fortranMacro += "!INTEGER(C_INT), parameter, public :: "+ macroName  + " = 1 \n";
-    //   } else {
-    //     fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName  + " = 1 \n";
-    //   }
-    // }
+        } else {
+          fortranMacro =  "! unrecognized macro. Possibly identifer macro\n";
+          std::istringstream in(macroDef);
+          for (std::string line; std::getline(in, line);) {
+            fortranMacro += "! " + line + "\n";
+          }
+        }
+    } else { // macroVal.empty(), make the object a bool positive
+      if (macroName[0] == '_') {
+        fortranMacro = "! underscore is invalid character name\n";
+        fortranMacro += "!INTEGER(C_INT), parameter, public :: "+ macroName  + " = 1 \n";
+      } else {
+        fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName  + " = 1 \n";
+      }
+    }
 
 
     } else {
@@ -681,15 +681,14 @@ string MacroFormatter::getFortranMacroASString() {
       string functionBody = macroDef.substr(rParen+1, macroDef.size()-1);
       if (macroName[0] == '_') {
         fortranMacro = "! underscore is invalid character name.\n";
-        fortranMacro += "! assume macro return type to be integer\n";
         fortranMacro += "!INTERFACE\n";
         if (md->getMacroInfo()->arg_empty()) {
-          fortranMacro += "!INTEGER(C_INT) FUNCTION "+ macroName + "() bind (C)\n";
+          fortranMacro += "!SUBROUTINE "+ macroName + "() bind (C)\n";
         } else {
-          fortranMacro += "!INTEGER(C_INT) FUNCTION "+ macroName + "(";
+          fortranMacro += "!SUBROUTINE "+ macroName + "(";
           for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
             fortranMacro += (*it)->getName();
-            fortranMacro += " ,";
+            fortranMacro += ", ";
           }
           // erase the redundant colon
           fortranMacro.erase(fortranMacro.size()-2);
@@ -701,17 +700,25 @@ string MacroFormatter::getFortranMacroASString() {
             fortranMacro += "! " + line + "\n";
           }
         }
-        fortranMacro += "!END FUNCTION " + macroName + "\n";
+        fortranMacro += "!END SUBROUTINE " + macroName + "\n";
+        fortranMacro += "!END INTERFACE\n";
       } else {
-        fortranMacro = "! assume macro return type to be integer\n";
-        fortranMacro += "INTERFACE\n";
+        fortranMacro = "INTERFACE\n";
         if (md->getMacroInfo()->arg_empty()) {
-          fortranMacro += "INTEGER(C_INT) FUNCTION "+ macroName + "() bind (C)\n";
+          fortranMacro += "SUBROUTINE "+ macroName + "() bind (C)\n";
         } else {
-          fortranMacro += "INTEGER(C_INT) FUNCTION "+ macroName + "(";
+          fortranMacro += "SUBROUTINE "+ macroName + "(";
           for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
-            fortranMacro += (*it)->getName();
-            fortranMacro += " ,";
+            string arg = (*it)->getName();
+            // remove underscore
+            size_t found = arg.find_first_of("_");
+            while (found!=std::string::npos)
+            {
+              arg.erase(found, found+1);
+              found=arg.find_first_of("_");
+            }
+            fortranMacro += arg;
+            fortranMacro += ", ";
           }
           // erase the redundant colon
           fortranMacro.erase(fortranMacro.size()-2);
@@ -723,8 +730,10 @@ string MacroFormatter::getFortranMacroASString() {
             fortranMacro += "! " + line + "\n";
           }
         }
-        fortranMacro += "END FUNCTION " + macroName + "\n";
+        fortranMacro += "END SUBROUTINE " + macroName + "\n";
+        fortranMacro += "END INTERFACE\n";
       }
+    }
 
     
   }
