@@ -79,8 +79,6 @@ public:
   string tag_name;
   bool isInSystemHeader;
 
-
-
   // Member functions declarations
   RecordDeclFormatter(RecordDecl *rd, Rewriter &r);
   void setMode();
@@ -96,6 +94,21 @@ private:
   Rewriter &rewriter;
   
 };
+
+class EnumDeclFormatter {
+public:
+  EnumDecl *enumDecl;
+  bool isInSystemHeader;
+
+  // Member functions declarations
+  EnumDeclFormatter(EnumDecl *e, Rewriter &r);
+  string getFortranEnumASString();
+
+private:
+  Rewriter &rewriter;
+  
+};
+
 
 
 
@@ -135,6 +148,7 @@ private:
   bool isObjectOrFunction;
   //CompilerInstance &ci;
 };
+
 
 //------------Visitor class decl----------------------------------------------------------------------------------------------------
 

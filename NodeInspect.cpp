@@ -163,14 +163,7 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
         f_type = "C_PTR";
       }
     }
-    // ARRAY
-  } else if (c_qualType.getTypePtr()->isArrayType()) {
-    const ArrayType *at = c_qualType.getTypePtr()->getAsArrayTypeUnsafe ();
-    // recursively get element type
-    QualType e_qualType = at->getElementType ();
-    CToFTypeFormatter etf(e_qualType, ac);
-
-    f_type = etf.getFortranTypeASString(typeWrapper);
+    
   } else if (c_qualType.getTypePtr()->isStructureType()) {
     // struct type
     f_type = c_qualType.getAsString();
@@ -183,6 +176,14 @@ string CToFTypeFormatter::getFortranTypeASString(bool typeWrapper) {
     if (typeWrapper) {
       f_type = "TYPE(" + f_type + ")";
     } 
+    // ARRAY
+  } else if (c_qualType.getTypePtr()->isArrayType()) {
+    const ArrayType *at = c_qualType.getTypePtr()->getAsArrayTypeUnsafe ();
+    // recursively get element type
+    QualType e_qualType = at->getElementType ();
+    CToFTypeFormatter etf(e_qualType, ac);
+
+    f_type = etf.getFortranTypeASString(typeWrapper);
   } else {
     f_type = "unrecognized_type(" + c_qualType.getAsString()+")";
   }
@@ -322,6 +323,33 @@ string CToFTypeFormatter::createFortranType(const string macroName, const string
   return ft_buffer;
 };
 
+// -----------initializer EnumDeclFormatter--------------------
+EnumDeclFormatter::EnumDeclFormatter(EnumDecl *e, Rewriter &r) : rewriter(r) {
+  enumDecl = e;
+  isInSystemHeader = rewriter.getSourceMgr().isInSystemHeader(enumDecl->getSourceRange().getBegin());
+};
+
+string EnumDeclFormatter::getFortranEnumASString() {
+  string enum_buffer;
+  if (!isInSystemHeader) {
+    string enumName = enumDecl->getNameAsString();
+    enum_buffer = "ENUM, BIND( C )\n";
+    enum_buffer += "\tenumerator :: ";
+    for (auto it = enumDecl->enumerator_begin (); it != enumDecl->enumerator_end (); it++) {
+      string constName = (*it)->getNameAsString ();
+      int constVal = (*it)->getInitVal ().getExtValue ();
+      enum_buffer += constName + "=" + to_string(constVal) + ", ";
+    }
+      // erase the redundant colon
+      enum_buffer.erase(enum_buffer.size()-2);
+      enum_buffer += "\n";
+      enum_buffer += "\tenumerator " + enumName+"\n";
+  }
+  enum_buffer += "END ENUM\n";
+
+  return enum_buffer;
+};
+
 // -----------initializer RecordDeclFormatter--------------------
 
 RecordDeclFormatter::RecordDeclFormatter(RecordDecl* rd, Rewriter &r) : rewriter(r) {
@@ -415,8 +443,6 @@ void RecordDeclFormatter::setMode() {
   }
 };
 
-
-// };
 
 
 
@@ -734,8 +760,6 @@ string MacroFormatter::getFortranMacroASString() {
         fortranMacro += "END INTERFACE\n";
       }
     }
-
-    
   }
 
 
@@ -821,8 +845,8 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     }
 
   } else if (isa<EnumDecl> (d)) {
-    EnumDecl *enumDecl = cast<EnumDecl> (d);
-    llvm::outs() << "found EnumDecl " << enumDecl->getNameAsString()+ "\n";
+    EnumDeclFormatter edf(cast<EnumDecl> (d), TheRewriter);
+    outs() << edf.getFortranEnumASString();
   } else {
 
     llvm::outs() << "found other type of declaration \n";
@@ -877,23 +901,6 @@ public:
   //     }
   //   }
   // };
-
-  // // conditional macros
-  // void  If (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue) {};
-  // void  Elif (SourceLocation Loc, SourceRange ConditionRange, ConditionValueKind ConditionValue, SourceLocation IfLoc) {};
-  // void  Ifdef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
-  // void  Ifndef (SourceLocation Loc, const Token &MacroNameTok, const MacroDefinition &MD) {};
-  // void  Else (SourceLocation Loc, SourceLocation IfLoc) {};
-
-
-  void MacroExpands (const Token &MacroNameTok, const MacroDefinition &MD, SourceRange Range, const MacroArgs *Args) {
-    // #define X 3
-    // #if X == 1
-    // int a;
-    // #else
-    // int b;
-    // #endif
-  };
 
   void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
     MacroFormatter mf(MacroNameTok, MD, ci);
