@@ -323,6 +323,88 @@ string CToFTypeFormatter::createFortranType(const string macroName, const string
   return ft_buffer;
 };
 
+// -----------initializer VarDeclFormatter--------------------
+VarDeclFormatter::VarDeclFormatter(VarDecl *v, Rewriter &r) : rewriter(r) {
+  varDecl = v;
+  isInSystemHeader = rewriter.getSourceMgr().isInSystemHeader(varDecl->getSourceRange().getBegin());
+};
+
+string VarDeclFormatter::getInitValueASString() {
+  string valString;
+  if (varDecl->hasInit() and !isInSystemHeader) {
+    //outs() << "init exp: " << varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType()) << "\n";
+    if (varDecl->getType().getTypePtr()->isStructureType()) {
+      // structure type skip
+    } else if (varDecl->getType().getTypePtr()->isCharType()) {
+      char character = varDecl->evaluateValue ()->getInt().getExtValue ();
+      string cString;
+      cString += character;
+      valString = "\'" + cString + "\'";
+    } else if (varDecl->getType().getTypePtr()->isIntegerType()) {
+      int intValue = varDecl->evaluateValue ()->getInt().getExtValue();
+      valString = to_string(intValue);
+    } else if (varDecl->getType().getTypePtr()->isRealType()) {
+      valString = varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+    } else if (varDecl->getType().getTypePtr()->isArrayType()) {
+      Expr *exp = varDecl->getInit();
+      string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+      size_t found = arrayText.find_first_of("{");
+      while (found!=string::npos) {
+        arrayText[found]='(';
+        arrayText.insert(found+1, "/");
+        found=arrayText.find_first_of("{",found);
+      }     
+      found = arrayText.find_first_of("}");
+      while (found!=string::npos) {
+        arrayText[found]='/';
+        arrayText.insert(found+1, ")");
+        found=arrayText.find_first_of("}",found);
+      }
+      valString = "!" + arrayText;
+    } else if (varDecl->getType().getTypePtr()->isPointerType()) {
+      valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+    } else if (varDecl->getType().getTypePtr()->isComplexType()) {
+      APValue *apVal = varDecl->evaluateValue ();
+      if (apVal->isComplexFloat ()) {
+        float real = apVal->getComplexFloatReal ().convertToFloat ();
+        float imag = apVal->getComplexFloatImag ().convertToFloat ();
+        valString = "(" + to_string(real) + "," + to_string(imag) +")";
+      } else if (apVal->isComplexInt ()) {
+        int real = apVal->getComplexIntReal ().getExtValue ();
+        int imag = apVal->getComplexIntImag ().getExtValue ();
+        valString = "(" + to_string(real) + "," + to_string(imag) +")";
+      } 
+    } else {
+      valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+    }
+  }
+  return valString;
+
+};
+
+
+string VarDeclFormatter::getFortranVarDeclASString() {
+  string vd_buffer;
+  if (varDecl->getType().getTypePtr()->isStructureType()) {
+    // structure type
+    RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
+    RecordDeclFormatter rdf(rd, rewriter);
+    rdf.setTagName(varDecl->getNameAsString());
+    vd_buffer = rdf.getFortranStructASString();
+  } else {
+    string value = getInitValueASString();
+    CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
+    if (value.empty()) {
+      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + getInitValueASString() + "\n";
+    } else if (value[0] == '!') {
+      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + getInitValueASString() + "\n";
+    } else {
+      vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + getInitValueASString() + "\n";
+    }
+  }
+  return vd_buffer;
+};
+
 // -----------initializer EnumDeclFormatter--------------------
 EnumDeclFormatter::EnumDeclFormatter(EnumDecl *e, Rewriter &r) : rewriter(r) {
   enumDecl = e;
@@ -343,9 +425,13 @@ string EnumDeclFormatter::getFortranEnumASString() {
       // erase the redundant colon
       enum_buffer.erase(enum_buffer.size()-2);
       enum_buffer += "\n";
-      enum_buffer += "\tenumerator " + enumName+"\n";
+      if (!enumName.empty()) {
+        enum_buffer += "\tenumerator " + enumName+"\n";
+      }
+
+      enum_buffer += "END ENUM\n";
   }
-  enum_buffer += "END ENUM\n";
+  
 
   return enum_buffer;
 };
@@ -414,7 +500,7 @@ string RecordDeclFormatter::getFortranStructASString() {
         identifier[found]='_';
         found=identifier.find_first_of(" ",found+1);
       }
-      rd_buffer += "! ANONYMOUS struct is commented out, it may or may not have a declared name\n";
+      rd_buffer += "! ANONYMOUS struct may or may not have a declared name\n";
       string temp_buf = "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
       // comment out temp_buf
       std::istringstream in(temp_buf);
@@ -565,7 +651,14 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
   string fortanFunctDecl;
   if (!isInSystemHeader) {
     string funcType;
-    string imports = "USE iso_c_binding, only: " + getParamsTypesASString();
+    string paramsString = getParamsTypesASString();
+    string imports;
+    if (!paramsString.empty()) {
+      imports = "USE iso_c_binding, only: " + getParamsTypesASString();
+    } else {
+      imports = "USE iso_c_binding";
+    }
+    
     // check if the return type is void or not
     if (returnQType.getTypePtr()->isVoidType()) {
       funcType = "SUBROUTINE";
@@ -667,14 +760,18 @@ string MacroFormatter::getFortranMacroASString() {
         
         } else if (CToFTypeFormatter::isIntLike(macroVal)) {
           // invalid chars
-          if (macroVal.find_first_of("ULx") != std::string::npos or macroName[0] == '_') {
+          if (macroVal.find_first_of("UL") != std::string::npos or macroName[0] == '_') {
             fortranMacro = "!INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          } else if (macroVal.find("x") != std::string::npos) {
+            size_t x = macroVal.find_last_of("x");
+            string val = macroVal.substr(x+1);
+            fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = int(z\'" + val + "\')\n";
           } else {
             fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
           }
 
         } else if (CToFTypeFormatter::isDoubleLike(macroVal)) {
-          if (macroVal.find_first_of("eFUL") != std::string::npos or macroName[0] == '_') {
+          if (macroVal.find_first_of("FUL") != std::string::npos or macroName[0] == '_') {
             fortranMacro = "!REAL(C_DOUBLE), parameter, public :: "+ macroName + " = " + macroVal + "\n";
           } else {
             fortranMacro = "REAL(C_DOUBLE), parameter, public :: "+ macroName + " = " + macroVal + "\n";
@@ -685,7 +782,6 @@ string MacroFormatter::getFortranMacroASString() {
           fortranMacro = CToFTypeFormatter::createFortranType(macroName, macroVal);
 
         } else {
-          fortranMacro =  "! unrecognized macro. Possibly identifer macro\n";
           std::istringstream in(macroDef);
           for (std::string line; std::getline(in, line);) {
             fortranMacro += "! " + line + "\n";
@@ -804,45 +900,14 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
 
   } else if (isa<RecordDecl> (d)) {
     RecordDecl *rd = cast<RecordDecl> (d);
-    if (rd->isStruct()) {// struct
-      RecordDeclFormatter rdf(rd, TheRewriter);
-      // recordDecl->isAnonymousStructOrUnion() NOT WORKING!
-      llvm::outs() << rdf.getFortranStructASString();      
-    } else {// assume struct, not considering union
-      outs() << "! RecordDecl is not struct\n";
-    }
+    RecordDeclFormatter rdf(rd, TheRewriter);
+    outs() << rdf.getFortranStructASString();
 
 
   } else if (isa<VarDecl> (d)) {
     VarDecl *varDecl = cast<VarDecl> (d);
-
-    if (varDecl->getType().getTypePtr()->isStructureType()) {
-      // structure type
-      RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
-      RecordDeclFormatter rdf(rd, TheRewriter);
-      rdf.setTagName(varDecl->getNameAsString());
-
-      llvm::outs() << rdf.getFortranStructASString();
-    } 
-
-    else {
-      if (TheRewriter.getSourceMgr().isInSystemHeader(varDecl->getSourceRange().getBegin())) {
-        // should skip  "variable decl in system header\n";
-      } else {
-        llvm::outs() << "found Other VarDecl " << varDecl->getNameAsString() 
-        << " type: " << varDecl->getType().getAsString() << "\n";      
-        if (varDecl->hasInit()) {
-          //Expr *initExp = varDecl->getInit();
-          //outs() << "init exp: " << initExp->getName();
-          // if type is numeric, just dump it
-          // if type is char, or char array just dump it
-          // if type is numeric array, reformat it
-          // cast exp to multiple sub expressions
-
-        }  
-      }
-
-    }
+    VarDeclFormatter vdf(varDecl, TheRewriter);
+    outs() << vdf.getFortranVarDeclASString();
 
   } else if (isa<EnumDecl> (d)) {
     EnumDeclFormatter edf(cast<EnumDecl> (d), TheRewriter);
@@ -851,11 +916,13 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
 
     llvm::outs() << "found other type of declaration \n";
     d->dump();
+    RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
   }
     // comment out because function declaration doesn't need to be traversed.
     // RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d); // Forward to base class
 
     return true; // Return false to stop the AST analyzing
+
 };
 
 

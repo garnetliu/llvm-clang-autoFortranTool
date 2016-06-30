@@ -109,6 +109,20 @@ private:
   
 };
 
+class VarDeclFormatter {
+public:
+  VarDecl *varDecl;
+  bool isInSystemHeader;
+
+  // Member functions declarations
+  VarDeclFormatter(VarDecl *v, Rewriter &r);
+  string getInitValueASString();
+  string getFortranVarDeclASString();
+
+private:
+  Rewriter &rewriter;
+  
+};
 
 
 
