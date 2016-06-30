@@ -346,21 +346,31 @@ string VarDeclFormatter::getInitValueASString() {
     } else if (varDecl->getType().getTypePtr()->isRealType()) {
       valString = varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
     } else if (varDecl->getType().getTypePtr()->isArrayType()) {
-      Expr *exp = varDecl->getInit();
-      string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-      size_t found = arrayText.find_first_of("{");
-      while (found!=string::npos) {
-        arrayText[found]='(';
-        arrayText.insert(found+1, "/");
-        found=arrayText.find_first_of("{",found);
-      }     
-      found = arrayText.find_first_of("}");
-      while (found!=string::npos) {
-        arrayText[found]='/';
-        arrayText.insert(found+1, ")");
-        found=arrayText.find_first_of("}",found);
+      const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
+      QualType e_qualType = at->getElementType ();
+      if (e_qualType.getTypePtr()->isCharType()) {
+        Expr *exp = varDecl->getInit();
+        string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+        valString = arrayText;
+      } else {
+        Expr *exp = varDecl->getInit();
+        string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+        size_t found = arrayText.find_first_of("{");
+        while (found!=string::npos) {
+          arrayText[found]='(';
+          arrayText.insert(found+1, "/");
+          found=arrayText.find_first_of("{",found);
+        }     
+        found = arrayText.find_first_of("}");
+        while (found!=string::npos) {
+          arrayText[found]='/';
+          arrayText.insert(found+1, ")");
+          found=arrayText.find_first_of("}",found);
+        }
+        valString = "!" +  arrayText;
       }
-      valString = "!" + arrayText;
+
+      
     } else if (varDecl->getType().getTypePtr()->isPointerType()) {
       valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
     } else if (varDecl->getType().getTypePtr()->isComplexType()) {
