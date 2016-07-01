@@ -408,25 +408,48 @@ string VarDeclFormatter::getFortranVarDeclASString() {
       string value = getInitValueASString();
       CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
       if (value.empty()) {
-        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + getInitValueASString() + "\n";
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
       } else if (value[0] == '!') {
-        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + getInitValueASString() + "\n";
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
       } else {
-        // calculate the number of elements
-        int numOfEle = 0;
-        size_t found = arrayText.find_first_of(",");
-        while (found!=string::npos) {
-          numOfEle++;
-          found=arrayText.find_first_of(",",found+1);
-        }
-        string identifier;
-        if (numOfEle) {
-          numOfEle++;
-          identifier = varDecl->getNameAsString() + "(" + to_string(numOfEle) + ")";
+        // array is not empty
+
+        // calculate the size of the array
+        const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
+        QualType e_qualType = at->getElementType ();
+        int typeSize = varDecl->getASTContext().getTypeSizeInChars(varDecl->getType()).getQuantity();
+        int elementSize = varDecl->getASTContext().getTypeSizeInChars(e_qualType).getQuantity();
+        int array_size = typeSize / elementSize;
+
+        // remove  { }  !!!!ONLY for one dimensional array
+        string array_args = arrayText.substr(1, arrayText.size()-2);
+
+        if (array_args.empty()) {
+          vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
         } else {
-          identifier = varDecl->getNameAsString();
+          // calculate the number of elements
+          int numOfEle = 0;
+          size_t found = array_args.find_first_of(",");
+
+          if (found==string::npos) {
+            numOfEle = 1;
+          } else {
+            while (found!=string::npos) {
+              numOfEle++;
+              found=array_args.find_first_of(",",found+1);
+            }
+            numOfEle++;            
+          }
+
+          string identifier = varDecl->getNameAsString() + "(" + to_string(array_size) + ")";
+          string arrayIndex = varDecl->getNameAsString() + "_i";
+
+          //INTEGER(C_INT), public :: i
+          vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + arrayIndex + "\n";
+          //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
+          vd_buffer += tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = [" + array_args + ",(0,"+ arrayIndex + "="+ to_string(++numOfEle) +"," + to_string(array_size) + ")]\n";
+
         }
-        vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = " + getInitValueASString() + "\n";
       }
 
     
@@ -434,11 +457,11 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     string value = getInitValueASString();
     CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
     if (value.empty()) {
-      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + getInitValueASString() + "\n";
+      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
     } else if (value[0] == '!') {
-      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + getInitValueASString() + "\n";
+      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
     } else {
-      vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + getInitValueASString() + "\n";
+      vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
     }
 
 
