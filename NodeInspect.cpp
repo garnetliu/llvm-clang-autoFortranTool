@@ -367,7 +367,7 @@ string VarDeclFormatter::getInitValueASString() {
           arrayText.insert(found+1, ")");
           found=arrayText.find_first_of("}",found);
         }
-        valString = "!" +  arrayText;
+        valString = arrayText;
       }
 
       
@@ -401,6 +401,35 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     RecordDeclFormatter rdf(rd, rewriter);
     rdf.setTagName(varDecl->getNameAsString());
     vd_buffer = rdf.getFortranStructASString();
+  } else if (varDecl->getType().getTypePtr()->isArrayType()) {
+      Expr *exp = varDecl->getInit();
+      string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+
+      string value = getInitValueASString();
+      CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
+      if (value.empty()) {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + getInitValueASString() + "\n";
+      } else if (value[0] == '!') {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + getInitValueASString() + "\n";
+      } else {
+        // calculate the number of elements
+        int numOfEle = 0;
+        size_t found = arrayText.find_first_of(",");
+        while (found!=string::npos) {
+          numOfEle++;
+          found=arrayText.find_first_of(",",found+1);
+        }
+        string identifier;
+        if (numOfEle) {
+          numOfEle++;
+          identifier = varDecl->getNameAsString() + "(" + to_string(numOfEle) + ")";
+        } else {
+          identifier = varDecl->getNameAsString();
+        }
+        vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = " + getInitValueASString() + "\n";
+      }
+
+    
   } else {
     string value = getInitValueASString();
     CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
@@ -411,6 +440,8 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     } else {
       vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + getInitValueASString() + "\n";
     }
+
+
   }
   return vd_buffer;
 };
@@ -502,6 +533,9 @@ string RecordDeclFormatter::getFortranStructASString() {
       string identifier = tag_name;
 
       rd_buffer += "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";    
+    } else if (mode == TYPEDEF) {
+      string identifier = recordDecl->getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
+      rd_buffer += "TYPE, BIND(C) :: " + identifier + "\n" + fieldsInFortran + "END TYPE " + identifier +"\n";
     } else if (mode == ANONYMOUS) {
       string identifier = recordDecl->getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
       // replace space with underscore 
@@ -532,10 +566,17 @@ void RecordDeclFormatter::setMode() {
     mode = ID_TAG;
   } else if (!(recordDecl->getNameAsString()).empty() and tag_name.empty()) {
     mode = ID_ONLY;
-  } else if ((recordDecl->getNameAsString()).empty() and tag_name.empty()) {
-    mode = ANONYMOUS;
   } else if ((recordDecl->getNameAsString()).empty() and !tag_name.empty()) {
     mode = TAG_ONLY;
+  } else if ((recordDecl->getNameAsString()).empty() and tag_name.empty()) {
+    string identifier = recordDecl->getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
+    if (identifier.find(" ") != string::npos) {
+      mode = ANONYMOUS;
+    } else {
+      // is a identifier
+      mode = TYPEDEF;
+    }
+    
   }
 };
 
@@ -895,14 +936,22 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
       if (TheRewriter.getSourceMgr().isInSystemHeader(tdd->getSourceRange().getBegin())) {
         // type defs in header, skip for now
       } else {
-        // type defs to be tranlated
-        string sourceText = Lexer::getSourceText(CharSourceRange::getTokenRange(tdd->getSourceRange()), TheRewriter.getSourceMgr(), LangOptions(), 0);
-        string typeDefStr = "! type def content \n";
-        std::istringstream in(sourceText);
-        for (std::string line; std::getline(in, line);) {
-          typeDefStr += "! " + line + "\n";
+        // // type defs to be tranlated
+        // string sourceText = Lexer::getSourceText(CharSourceRange::getTokenRange(tdd->getSourceRange()), TheRewriter.getSourceMgr(), LangOptions(), 0);
+        // string typeDefStr = "! type def content \n";
+        // std::istringstream in(sourceText);
+        // for (std::string line; std::getline(in, line);) {
+        //   typeDefStr += "! " + line + "\n";
+        // }
+        if (tdd->getTypeSourceInfo()->getType().getTypePtr()->isStructureType()) {
+          // skip it, since it will be translated in recordecl
+        } else {
+          TypeSourceInfo * typeSourceInfo = tdd->getTypeSourceInfo ();
+          CToFTypeFormatter tf(typeSourceInfo->getType(), tdd->getASTContext());
+          outs() << "typedef id: " << tdd->getNameAsString() << "\n type decl in fortran: " << tf.getFortranTypeASString(true) << "\n";
         }
-        outs() << typeDefStr;
+
+
       }      
     } else { 
         // location not valid: top dummy type defs at top of the file, skip for now

@@ -70,6 +70,8 @@ public:
   const int ID_ONLY = 1;
   const int TAG_ONLY = 2;
   const int ID_TAG = 3;
+  const int TYPEDEF = 4;
+  
   const int UNION = 0;
   const int STRUCT = 1;
 
