@@ -332,48 +332,23 @@ VarDeclFormatter::VarDeclFormatter(VarDecl *v, Rewriter &r) : rewriter(r) {
 string VarDeclFormatter::getInitValueASString() {
   string valString;
   if (varDecl->hasInit() and !isInSystemHeader) {
-    //outs() << "init exp: " << varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType()) << "\n";
     if (varDecl->getType().getTypePtr()->isStructureType()) {
       // structure type skip
     } else if (varDecl->getType().getTypePtr()->isCharType()) {
+      // single CHAR
       char character = varDecl->evaluateValue ()->getInt().getExtValue ();
       string cString;
       cString += character;
       valString = "\'" + cString + "\'";
     } else if (varDecl->getType().getTypePtr()->isIntegerType()) {
+      // INT
       int intValue = varDecl->evaluateValue ()->getInt().getExtValue();
       valString = to_string(intValue);
     } else if (varDecl->getType().getTypePtr()->isRealType()) {
+      // REAL
       valString = varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
-    } else if (varDecl->getType().getTypePtr()->isArrayType()) {
-      const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
-      QualType e_qualType = at->getElementType ();
-      if (e_qualType.getTypePtr()->isCharType()) {
-        Expr *exp = varDecl->getInit();
-        string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-        valString = arrayText;
-      } else {
-        Expr *exp = varDecl->getInit();
-        string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-        size_t found = arrayText.find_first_of("{");
-        while (found!=string::npos) {
-          arrayText[found]='(';
-          arrayText.insert(found+1, "/");
-          found=arrayText.find_first_of("{",found);
-        }     
-        found = arrayText.find_first_of("}");
-        while (found!=string::npos) {
-          arrayText[found]='/';
-          arrayText.insert(found+1, ")");
-          found=arrayText.find_first_of("}",found);
-        }
-        valString = arrayText;
-      }
-
-      
-    } else if (varDecl->getType().getTypePtr()->isPointerType()) {
-      valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
     } else if (varDecl->getType().getTypePtr()->isComplexType()) {
+      // COMPLEX
       APValue *apVal = varDecl->evaluateValue ();
       if (apVal->isComplexFloat ()) {
         float real = apVal->getComplexFloatReal ().convertToFloat ();
@@ -384,14 +359,132 @@ string VarDeclFormatter::getInitValueASString() {
         int imag = apVal->getComplexIntImag ().getExtValue ();
         valString = "(" + to_string(real) + "," + to_string(imag) +")";
       } 
-    } else {
+    } else if (varDecl->getType().getTypePtr()->isPointerType()) {
+      // POINTER --- handled by getFortranPtrDeclASString()
       valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+    } else if (varDecl->getType().getTypePtr()->isArrayType()) {
+      // ARRAY --- handled by getFortranArrayDeclASString()
+      Expr *exp = varDecl->getInit();
+      string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+      // comment out arrayText
+      std::istringstream in(arrayText);
+      for (std::string line; std::getline(in, line);) {
+        valString += "! " + line + "\n";
+      }
+      // const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
+      // QualType e_qualType = at->getElementType ();
+      // if (e_qualType.getTypePtr()->isCharType()) {
+      //   Expr *exp = varDecl->getInit();
+      //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+      //   valString = arrayText;
+      // } else {
+      //   valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+
+          
+      //   }
+
+      //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+      //   size_t found = arrayText.find_first_of("{");
+      //   while (found!=string::npos) {
+      //     arrayText[found]='(';
+      //     arrayText.insert(found+1, "/");
+      //     found=arrayText.find_first_of("{",found);
+      //   }     
+      //   found = arrayText.find_first_of("}");
+      //   while (found!=string::npos) {
+      //     arrayText[found]='/';
+      //     arrayText.insert(found+1, ")");
+      //     found=arrayText.find_first_of("}",found);
+      //   }
+      //   valString = arrayText;
+      // }
+
+      
+    } else {
+      valString = "!" + varDecl->evaluateValue()->getAsString(varDecl->getASTContext(), varDecl->getType());
     }
   }
   return valString;
 
 };
 
+string VarDeclFormatter::getFortranArrayEleASString(InitListExpr *ile) {
+  return "";
+};
+
+string VarDeclFormatter::getFortranArrayDeclASString() {
+  string arrayDecl;
+  if (varDecl->getType().getTypePtr()->isArrayType() and !isInSystemHeader) {
+    CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
+    if (!varDecl->hasInit()) {
+      // only declared, no init
+      arrayDecl = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+    } else {
+      // has init
+      const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
+      QualType e_qualType = at->getElementType ();
+      if (e_qualType.getTypePtr()->isCharType()) {
+        // handle stringliteral case
+        Expr *exp = varDecl->getInit();
+        string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+        arrayDecl = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + arrayText + "\n";
+      } else {
+        bool evaluatable = false;
+        Expr *exp = varDecl->getInit();
+        if (isa<InitListExpr> (exp)) {
+          InitListExpr *ile = cast<InitListExpr> (exp);
+          ArrayRef< Expr * > elements = ile->inits ();
+          size_t numOfEle = elements.size();
+          outs() << "array size: " << numOfEle << "\n";
+          for (auto it = elements.begin (); it != elements.end(); it++) {
+                Expr *element = (*it);
+                if (isa<InitListExpr> (element)) {
+                  // multidimensional array
+                  InitListExpr *innerIle = cast<InitListExpr> (element);
+                  ArrayRef< Expr * > innerElements = innerIle->inits ();
+                  size_t numOfInnerEle = innerElements.size();
+                  outs() << "inner array size: " << numOfInnerEle << "\n";
+                  for (auto it = innerElements.begin (); it != innerElements.end(); it++) {
+                    Expr *innerelement = (*it);
+                    if (innerelement->isEvaluatable (varDecl->getASTContext())) {
+                      evaluatable = true;
+                      clang::Expr::EvalResult r;
+                      innerelement->EvaluateAsRValue(r, varDecl->getASTContext());
+                      string eleVal = r.Val.getAsString(varDecl->getASTContext(), e_qualType);
+                      outs() << "innerelement: " << eleVal << "\n";
+                    }
+                  }
+                } else {
+                  if (element->isEvaluatable (varDecl->getASTContext())) {
+                    evaluatable = true;
+                    clang::Expr::EvalResult r;
+                    element->EvaluateAsRValue(r, varDecl->getASTContext());
+                    string eleVal = r.Val.getAsString(varDecl->getASTContext(), e_qualType);
+                    outs() << "element: " << eleVal << "\n";
+                  }
+                }
+              }
+              if (!evaluatable) {
+                string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(varDecl->getSourceRange()), rewriter.getSourceMgr(), LangOptions(), 0);
+                // comment out arrayText
+                std::istringstream in(arrayText);
+                for (std::string line; std::getline(in, line);) {
+                  arrayDecl += "! " + line + "\n";
+                }
+              } else {
+                //INTEGER(C_INT), public :: i
+                //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
+              }
+            }
+          }     
+      }
+  }
+  return arrayDecl;
+};
+
+string VarDeclFormatter::getFortranPtrDeclASString() {
+  return "";
+};
 
 string VarDeclFormatter::getFortranVarDeclASString() {
   string vd_buffer;
@@ -402,74 +495,92 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     rdf.setTagName(varDecl->getNameAsString());
     vd_buffer = rdf.getFortranStructASString();
   } else if (varDecl->getType().getTypePtr()->isArrayType()) {
-    if (!varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe()->getElementType ().getTypePtr()->isCharType()
-      and varDecl->hasInit() and !isInSystemHeader) {
       // handle initialized numeric array specifically
 
-      Expr *exp = varDecl->getInit();
-      string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+      vd_buffer = getFortranArrayDeclASString();
+      // Expr *exp = varDecl->getInit();
+      // string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
 
-      string value = getInitValueASString();
-      CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
-      if (value.empty()) {
-        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-      } else if (value[0] == '!') {
-        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
-      } else {
-        // array is not empty
+      // string value = getInitValueASString();
+      // CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
+      // if (value.empty()) {
+      //   vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+      // } else if (value[0] == '!') {
+      //   vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
+      // } else {
+      //   // array is not empty
 
-        // calculate the size of the array
-        const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
-        QualType e_qualType = at->getElementType ();
-        int typeSize = varDecl->getASTContext().getTypeSizeInChars(varDecl->getType()).getQuantity();
-        int elementSize = varDecl->getASTContext().getTypeSizeInChars(e_qualType).getQuantity();
-        int array_size = typeSize / elementSize;
+      //   // calculate the size of the array
+      //   const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
+      //   QualType e_qualType = at->getElementType ();
+      //   int typeSize = varDecl->getASTContext().getTypeSizeInChars(varDecl->getType()).getQuantity();
+      //   int elementSize = varDecl->getASTContext().getTypeSizeInChars(e_qualType).getQuantity();
+      //   int array_size = typeSize / elementSize;
 
-        // remove  { }  !!!!ONLY for one dimensional array
-        string array_args = arrayText.substr(1, arrayText.size()-2);
+      //   // remove  { }  !!!!ONLY for one dimensional array
+      //   string array_args = arrayText.substr(1, arrayText.size()-2);
 
-        if (array_args.empty()) {
-          vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-        } else {
-          // calculate the number of elements
-          int numOfEle = 0;
-          size_t found = array_args.find_first_of(",");
+      //   if (array_args.empty()) {
+      //     vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+      //   } else {
+      //     // calculate the number of elements
+      //     int numOfEle = 0;
+      //     size_t found = array_args.find_first_of(",");
 
-          if (found==string::npos) {
-            numOfEle = 1;
-          } else {
-            while (found!=string::npos) {
-              numOfEle++;
-              found=array_args.find_first_of(",",found+1);
-            }
-            numOfEle++;            
-          }
+      //     if (found==string::npos) {
+      //       numOfEle = 1;
+      //     } else {
+      //       while (found!=string::npos) {
+      //         numOfEle++;
+      //         found=array_args.find_first_of(",",found+1);
+      //       }
+      //       numOfEle++;            
+      //     }
 
-          string identifier = varDecl->getNameAsString() + "(" + to_string(array_size) + ")";
-          string arrayIndex = varDecl->getNameAsString() + "_i";
+      //     string identifier = varDecl->getNameAsString() + "(" + to_string(array_size) + ")";
+      //     string arrayIndex = varDecl->getNameAsString() + "_i";
 
-          //INTEGER(C_INT), public :: i
-          vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + arrayIndex + "\n";
-          //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
-          vd_buffer += tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = [" + array_args + ",(0,"+ arrayIndex + "="+ to_string(++numOfEle) +"," + to_string(array_size) + ")]\n";
-        }
+      //     //INTEGER(C_INT), public :: i
+      //     vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + arrayIndex + "\n";
+      //     //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
+      //     vd_buffer += tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = [" + array_args + ",(0,"+ arrayIndex + "="+ to_string(++numOfEle) +"," + to_string(array_size) + ")]\n";
+      //   }
 
-      }
+      // }    
+  } else if (varDecl->getType().getTypePtr()->isPointerType()) {
+    // varDecl->hasInit()
 
-    } else {
-      // string array
-      string value = getInitValueASString();
-      CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
-      if (value.empty()) {
-        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-      } else if (value[0] == '!') {
-        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
-      } else {
-        vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
-      }
+    // dig and find the type that this pointer points to
+    QualType pointerType = varDecl->getType();
+    QualType pointeeType = pointerType.getTypePtr()->getPointeeType();
+    QualType *ptrQT = &pointerType;
+    QualType *pteQT = &pointeeType;
+    while (pteQT->getTypePtr()->isPointerType()) {
+      ptrQT = pteQT;
+      QualType temp = ptrQT->getTypePtr()->getPointeeType();
+      pteQT = &temp;
     }
-
+    CToFTypeFormatter tf(*pteQT, varDecl->getASTContext());
     
+
+    outs() << "this is a pointer variable declaration\n"
+    << "name: " << varDecl->getNameAsString() 
+    << " pointee type in fortran " << tf.getFortranTypeASString(true) << "\n";
+    if (varDecl->hasInit()) {
+      Expr *exp =  varDecl->getInit ();
+      if (isa<UnaryOperator> (exp)) {
+        UnaryOperator *uop = cast<UnaryOperator> (exp);
+        outs() << "is a UnaryOperator\n";
+        exp = uop->getSubExpr();
+        if (isa<DeclRefExpr> (exp)) {
+          outs() << "is a DeclRefExpr\n";
+        }
+      } else {
+        outs() << "not a UnaryOperator\n";
+      }
+      // string expText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+      // outs() <<"exp name: " << expText << "\n";
+    }
   } else {
     string value = getInitValueASString();
     CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
@@ -484,6 +595,34 @@ string VarDeclFormatter::getFortranVarDeclASString() {
 
   }
   return vd_buffer;
+};
+
+// -----------initializer Typedef--------------------
+TypedefDeclFormater::TypedefDeclFormater(TypedefDecl *t, Rewriter &r) : rewriter(r) {
+  typedefDecl = t;
+  isLocValid = typedefDecl->getSourceRange().getBegin().isValid();
+  if (isLocValid) {
+    isInSystemHeader = rewriter.getSourceMgr().isInSystemHeader(typedefDecl->getSourceRange().getBegin());
+  } 
+  
+};
+
+string TypedefDeclFormater::getFortranTypedefDeclASString() {
+  string typdedef_buffer;
+  if (isLocValid and !isInSystemHeader) {
+      if (typedefDecl->getTypeSourceInfo()->getType().getTypePtr()->isStructureType()) {
+        // skip it, since it will be translated in recordecl
+      } else {
+        // other regular type defs
+        TypeSourceInfo * typeSourceInfo = typedefDecl->getTypeSourceInfo();
+        CToFTypeFormatter tf(typeSourceInfo->getType(), typedefDecl->getASTContext());
+        string identifier = typedefDecl->getNameAsString();
+        typdedef_buffer = "TYPE, BIND(C) :: " + identifier + "\n";
+        typdedef_buffer += "\t"+ tf.getFortranTypeASString(true) + "::" + identifier+"_"+tf.getFortranTypeASString(false) + "\n";
+        typdedef_buffer += "END TYPE " + identifier + "\n";
+      }
+    } 
+  return typdedef_buffer;
 };
 
 // -----------initializer EnumDeclFormatter--------------------
@@ -835,7 +974,6 @@ string MacroFormatter::getFortranMacroASString() {
     found=macroVal.find_first_of("\t");
   }
 
-
   if (!isInSystemHeader) {
     // handle object first
     if (isObjectLike()) {
@@ -964,38 +1102,13 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
 
   } else if (isa<FunctionDecl> (d)) {
     FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
-    if (!fdf.isInSystemHeader) {
-
-      llvm::outs() << "INTERFACE\n" 
-      << fdf.getFortranFunctDeclASString()
-      << "END INTERFACE\n";      
-    }
+    llvm::outs() << "INTERFACE\n" 
+    << fdf.getFortranFunctDeclASString()
+    << "END INTERFACE\n";      
   } else if (isa<TypedefDecl> (d)) {
     TypedefDecl *tdd = cast<TypedefDecl> (d);
-    if (tdd->getSourceRange().getBegin().isValid()) {
-      if (TheRewriter.getSourceMgr().isInSystemHeader(tdd->getSourceRange().getBegin())) {
-        // type defs in header, skip for now
-      } else {
-        // // type defs to be tranlated
-        // string sourceText = Lexer::getSourceText(CharSourceRange::getTokenRange(tdd->getSourceRange()), TheRewriter.getSourceMgr(), LangOptions(), 0);
-        // string typeDefStr = "! type def content \n";
-        // std::istringstream in(sourceText);
-        // for (std::string line; std::getline(in, line);) {
-        //   typeDefStr += "! " + line + "\n";
-        // }
-        if (tdd->getTypeSourceInfo()->getType().getTypePtr()->isStructureType()) {
-          // skip it, since it will be translated in recordecl
-        } else {
-          TypeSourceInfo * typeSourceInfo = tdd->getTypeSourceInfo ();
-          CToFTypeFormatter tf(typeSourceInfo->getType(), tdd->getASTContext());
-          outs() << "typedef id: " << tdd->getNameAsString() << "\n type decl in fortran: " << tf.getFortranTypeASString(true) << "\n";
-        }
-
-
-      }      
-    } else { 
-        // location not valid: top dummy type defs at top of the file, skip for now
-    }
+    TypedefDeclFormater tdf(tdd, TheRewriter);
+    outs() << tdf.getFortranTypedefDeclASString();
 
   } else if (isa<RecordDecl> (d)) {
     RecordDecl *rd = cast<RecordDecl> (d);

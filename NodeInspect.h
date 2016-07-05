@@ -120,13 +120,29 @@ public:
   VarDeclFormatter(VarDecl *v, Rewriter &r);
   string getInitValueASString();
   string getFortranVarDeclASString();
+  string getFortranArrayDeclASString();
+  string getFortranPtrDeclASString();
+  string getFortranArrayEleASString(InitListExpr *ile);
 
 private:
   Rewriter &rewriter;
   
 };
 
+class TypedefDeclFormater {
+public:
+  TypedefDecl *typedefDecl;
+  bool isInSystemHeader;
 
+  // Member functions declarations
+  TypedefDeclFormater(TypedefDecl *t, Rewriter &r);
+  string getFortranTypedefDeclASString();
+
+private:
+  Rewriter &rewriter;
+  bool isLocValid;
+  
+};
 
 class FunctionDeclFormatter {
 public:
