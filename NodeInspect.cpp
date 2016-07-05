@@ -402,6 +402,10 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     rdf.setTagName(varDecl->getNameAsString());
     vd_buffer = rdf.getFortranStructASString();
   } else if (varDecl->getType().getTypePtr()->isArrayType()) {
+    if (!varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe()->getElementType ().getTypePtr()->isCharType()
+      and varDecl->hasInit() and !isInSystemHeader) {
+      // handle initialized numeric array specifically
+
       Expr *exp = varDecl->getInit();
       string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
 
@@ -448,9 +452,22 @@ string VarDeclFormatter::getFortranVarDeclASString() {
           vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + arrayIndex + "\n";
           //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
           vd_buffer += tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = [" + array_args + ",(0,"+ arrayIndex + "="+ to_string(++numOfEle) +"," + to_string(array_size) + ")]\n";
-
         }
+
       }
+
+    } else {
+      // string array
+      string value = getInitValueASString();
+      CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
+      if (value.empty()) {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+      } else if (value[0] == '!') {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
+      } else {
+        vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
+      }
+    }
 
     
   } else {
@@ -996,7 +1013,7 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
     outs() << edf.getFortranEnumASString();
   } else {
 
-    llvm::outs() << "found other type of declaration \n";
+    llvm::outs() << "!found other type of declaration \n";
     d->dump();
     RecursiveASTVisitor<TraverseNodeVisitor>::TraverseDecl(d);
   }
