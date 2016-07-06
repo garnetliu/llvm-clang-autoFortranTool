@@ -121,8 +121,7 @@ public:
   string getInitValueASString();
   string getFortranVarDeclASString();
   string getFortranArrayDeclASString();
-  string getFortranPtrDeclASString();
-  string getFortranArrayEleASString(InitListExpr *ile);
+  string getFortranArrayEleASString(InitListExpr *ile, string &arrayValues, string arrayShapes);
 
 private:
   Rewriter &rewriter;

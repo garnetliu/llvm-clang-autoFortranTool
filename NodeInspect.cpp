@@ -333,22 +333,22 @@ string VarDeclFormatter::getInitValueASString() {
   string valString;
   if (varDecl->hasInit() and !isInSystemHeader) {
     if (varDecl->getType().getTypePtr()->isStructureType()) {
-      // structure type skip
+        // structure type skip
     } else if (varDecl->getType().getTypePtr()->isCharType()) {
-      // single CHAR
+        // single CHAR
       char character = varDecl->evaluateValue ()->getInt().getExtValue ();
       string cString;
       cString += character;
       valString = "\'" + cString + "\'";
     } else if (varDecl->getType().getTypePtr()->isIntegerType()) {
-      // INT
+        // INT
       int intValue = varDecl->evaluateValue ()->getInt().getExtValue();
       valString = to_string(intValue);
     } else if (varDecl->getType().getTypePtr()->isRealType()) {
-      // REAL
+        // REAL
       valString = varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
     } else if (varDecl->getType().getTypePtr()->isComplexType()) {
-      // COMPLEX
+        // COMPLEX
       APValue *apVal = varDecl->evaluateValue ();
       if (apVal->isComplexFloat ()) {
         float real = apVal->getComplexFloatReal ().convertToFloat ();
@@ -360,46 +360,63 @@ string VarDeclFormatter::getInitValueASString() {
         valString = "(" + to_string(real) + "," + to_string(imag) +")";
       } 
     } else if (varDecl->getType().getTypePtr()->isPointerType()) {
-      // POINTER --- handled by getFortranPtrDeclASString()
-      valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+      // POINTER 
+      QualType pointerType = varDecl->getType();
+      QualType pointeeType = pointerType.getTypePtr()->getPointeeType();
+      if (pointeeType.getTypePtr()->isCharType()) {
+        // string literal
+        Expr *exp = varDecl->getInit();
+        if (isa<ImplicitCastExpr> (exp)) {
+          ImplicitCastExpr *ice = cast<ImplicitCastExpr> (exp);
+          Expr *subExpr = ice->getSubExpr();
+          if (isa<StringLiteral> (subExpr)) {
+            StringLiteral *sl = cast<StringLiteral> (subExpr);
+            string str = sl->getString();
+            valString = "\"" + str + "\"";
+          }
+        }
+
+      } else {
+        valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+      }
     } else if (varDecl->getType().getTypePtr()->isArrayType()) {
-      // ARRAY --- handled by getFortranArrayDeclASString()
+            // ARRAY --- handled by getFortranArrayDeclASString()
       Expr *exp = varDecl->getInit();
       string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-      // comment out arrayText
+            // comment out arrayText
       std::istringstream in(arrayText);
       for (std::string line; std::getline(in, line);) {
         valString += "! " + line + "\n";
       }
-      // const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
-      // QualType e_qualType = at->getElementType ();
-      // if (e_qualType.getTypePtr()->isCharType()) {
-      //   Expr *exp = varDecl->getInit();
-      //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-      //   valString = arrayText;
-      // } else {
-      //   valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+        // const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
+        // QualType e_qualType = at->getElementType ();
+        // if (e_qualType.getTypePtr()->isCharType()) {
+        //   Expr *exp = varDecl->getInit();
+        //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+        //   valString = arrayText;
+        // } else {
+        //   valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
 
-          
-      //   }
 
-      //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-      //   size_t found = arrayText.find_first_of("{");
-      //   while (found!=string::npos) {
-      //     arrayText[found]='(';
-      //     arrayText.insert(found+1, "/");
-      //     found=arrayText.find_first_of("{",found);
-      //   }     
-      //   found = arrayText.find_first_of("}");
-      //   while (found!=string::npos) {
-      //     arrayText[found]='/';
-      //     arrayText.insert(found+1, ")");
-      //     found=arrayText.find_first_of("}",found);
-      //   }
-      //   valString = arrayText;
-      // }
+        //   }
 
-      
+        //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+        //   size_t found = arrayText.find_first_of("{");
+        //   while (found!=string::npos) {
+        //     arrayText[found]='(';
+        //     arrayText.insert(found+1, "/");
+        //     found=arrayText.find_first_of("{",found);
+        //   }     
+        //   found = arrayText.find_first_of("}");
+        //   while (found!=string::npos) {
+        //     arrayText[found]='/';
+        //     arrayText.insert(found+1, ")");
+        //     found=arrayText.find_first_of("}",found);
+        //   }
+        //   valString = arrayText;
+        // }
+
+
     } else {
       valString = "!" + varDecl->evaluateValue()->getAsString(varDecl->getASTContext(), varDecl->getType());
     }
@@ -408,7 +425,7 @@ string VarDeclFormatter::getInitValueASString() {
 
 };
 
-string VarDeclFormatter::getFortranArrayEleASString(InitListExpr *ile) {
+string VarDeclFormatter::getFortranArrayEleASString(InitListExpr *ile, string &arrayValues, string arrayShapes) {
   return "";
 };
 
@@ -441,7 +458,7 @@ string VarDeclFormatter::getFortranArrayDeclASString() {
                 if (isa<InitListExpr> (element)) {
                   // multidimensional array
                   InitListExpr *innerIle = cast<InitListExpr> (element);
-                  ArrayRef< Expr * > innerElements = innerIle->inits ();
+                  ArrayRef<Expr *> innerElements = innerIle->inits ();
                   size_t numOfInnerEle = innerElements.size();
                   outs() << "inner array size: " << numOfInnerEle << "\n";
                   for (auto it = innerElements.begin (); it != innerElements.end(); it++) {
@@ -482,9 +499,7 @@ string VarDeclFormatter::getFortranArrayDeclASString() {
   return arrayDecl;
 };
 
-string VarDeclFormatter::getFortranPtrDeclASString() {
-  return "";
-};
+
 
 string VarDeclFormatter::getFortranVarDeclASString() {
   string vd_buffer;
@@ -547,40 +562,52 @@ string VarDeclFormatter::getFortranVarDeclASString() {
       //   }
 
       // }    
-  } else if (varDecl->getType().getTypePtr()->isPointerType()) {
-    // varDecl->hasInit()
 
-    // dig and find the type that this pointer points to
-    QualType pointerType = varDecl->getType();
-    QualType pointeeType = pointerType.getTypePtr()->getPointeeType();
-    QualType *ptrQT = &pointerType;
-    QualType *pteQT = &pointeeType;
-    while (pteQT->getTypePtr()->isPointerType()) {
-      ptrQT = pteQT;
-      QualType temp = ptrQT->getTypePtr()->getPointeeType();
-      pteQT = &temp;
+
+
+  } else if (varDecl->getType().getTypePtr()->isPointerType() and 
+    varDecl->getType().getTypePtr()->getPointeeType()->isCharType()) {
+    // string declaration
+    string value = getInitValueASString();
+    CToFTypeFormatter tf(varDecl->getType().getTypePtr()->getPointeeType(), varDecl->getASTContext());
+    if (value.empty()) {
+      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+    } else if (value[0] == '!') {
+      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
+    } else {
+      vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
     }
-    CToFTypeFormatter tf(*pteQT, varDecl->getASTContext());
+  //   // dig and find the type that this pointer points to
+  //   QualType pointerType = varDecl->getType();
+  //   QualType pointeeType = pointerType.getTypePtr()->getPointeeType();
+  //   QualType *ptrQT = &pointerType;
+  //   QualType *pteQT = &pointeeType;
+  //   while (pteQT->getTypePtr()->isPointerType()) {
+  //     ptrQT = pteQT;
+  //     QualType temp = ptrQT->getTypePtr()->getPointeeType();
+  //     pteQT = &temp;
+  //   }
+  //   CToFTypeFormatter tf(*pteQT, varDecl->getASTContext());
     
 
-    outs() << "this is a pointer variable declaration\n"
-    << "name: " << varDecl->getNameAsString() 
-    << " pointee type in fortran " << tf.getFortranTypeASString(true) << "\n";
-    if (varDecl->hasInit()) {
-      Expr *exp =  varDecl->getInit ();
-      if (isa<UnaryOperator> (exp)) {
-        UnaryOperator *uop = cast<UnaryOperator> (exp);
-        outs() << "is a UnaryOperator\n";
-        exp = uop->getSubExpr();
-        if (isa<DeclRefExpr> (exp)) {
-          outs() << "is a DeclRefExpr\n";
-        }
-      } else {
-        outs() << "not a UnaryOperator\n";
-      }
-      // string expText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-      // outs() <<"exp name: " << expText << "\n";
-    }
+  //   outs() << "this is a pointer variable declaration\n"
+  //   << "name: " << varDecl->getNameAsString() 
+  //   << " pointee type in fortran " << tf.getFortranTypeASString(true) << "\n";
+  //   if (varDecl->hasInit()) {
+  //     Expr *exp =  varDecl->getInit ();
+  //     if (isa<UnaryOperator> (exp)) {
+  //       UnaryOperator *uop = cast<UnaryOperator> (exp);
+  //       outs() << "is a UnaryOperator\n";
+  //       exp = uop->getSubExpr();
+  //       if (isa<DeclRefExpr> (exp)) {
+  //         outs() << "is a DeclRefExpr\n";
+  //       }
+  //     } else {
+  //       outs() << "not a UnaryOperator\n";
+  //     }
+  //     // string expText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
+  //     // outs() <<"exp name: " << expText << "\n";
+  //   }
   } else {
     string value = getInitValueASString();
     CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
