@@ -121,10 +121,11 @@ public:
   string getInitValueASString();
   string getFortranVarDeclASString();
   string getFortranArrayDeclASString();
-  string getFortranArrayEleASString(InitListExpr *ile, string &arrayValues, string arrayShapes);
+  void getFortranArrayEleASString(InitListExpr *ile, string &arrayValues, string arrayShapes, bool &evaluatable, bool firstEle);
 
 private:
   Rewriter &rewriter;
+  string arrayShapes_fin;
   
 };
 

@@ -425,8 +425,32 @@ string VarDeclFormatter::getInitValueASString() {
 
 };
 
-string VarDeclFormatter::getFortranArrayEleASString(InitListExpr *ile, string &arrayValues, string arrayShapes) {
-  return "";
+void VarDeclFormatter::getFortranArrayEleASString(InitListExpr *ile, string &arrayValues, string arrayShapes, bool &evaluatable, bool firstEle) {
+  ArrayRef<Expr *> innerElements = ile->inits ();
+  if (firstEle) {
+    size_t numOfInnerEle = innerElements.size();
+    arrayShapes += ", " + to_string(numOfInnerEle);
+    arrayShapes_fin = arrayShapes;
+  }
+  for (auto it = innerElements.begin (); it != innerElements.end(); it++) {
+    Expr *innerelement = (*it);
+    if (innerelement->isEvaluatable (varDecl->getASTContext())) {
+      evaluatable = true;
+      clang::Expr::EvalResult r;
+      innerelement->EvaluateAsRValue(r, varDecl->getASTContext());
+      string eleVal = r.Val.getAsString(varDecl->getASTContext(), innerelement->getType());
+      if (arrayValues.empty()) {
+        arrayValues = eleVal;
+      } else {
+        arrayValues += ", " + eleVal;
+      }
+      
+      // outs() << "arrayValues: " << arrayValues << "\n";
+    } else if (isa<InitListExpr> (innerelement)) {
+      InitListExpr *innerile = cast<InitListExpr> (innerelement);
+      getFortranArrayEleASString(innerile, arrayValues, arrayShapes, evaluatable, (it == innerElements.begin()) and firstEle);
+    } 
+  }
 };
 
 string VarDeclFormatter::getFortranArrayDeclASString() {
@@ -449,52 +473,55 @@ string VarDeclFormatter::getFortranArrayDeclASString() {
         bool evaluatable = false;
         Expr *exp = varDecl->getInit();
         if (isa<InitListExpr> (exp)) {
+          // initialize shape and values
+          // format: INTEGER(C_INT) :: array(2,3) = RESHAPE((/ 1, 2, 3, 4, 5, 6 /), (/2, 3/))
+          string arrayValues;
+          string arrayShapes;
+
           InitListExpr *ile = cast<InitListExpr> (exp);
           ArrayRef< Expr * > elements = ile->inits ();
           size_t numOfEle = elements.size();
-          outs() << "array size: " << numOfEle << "\n";
+          arrayShapes = to_string(numOfEle);
+          arrayShapes_fin = arrayShapes;
           for (auto it = elements.begin (); it != elements.end(); it++) {
-                Expr *element = (*it);
-                if (isa<InitListExpr> (element)) {
+            Expr *element = (*it);
+            if (isa<InitListExpr> (element)) {
                   // multidimensional array
-                  InitListExpr *innerIle = cast<InitListExpr> (element);
-                  ArrayRef<Expr *> innerElements = innerIle->inits ();
-                  size_t numOfInnerEle = innerElements.size();
-                  outs() << "inner array size: " << numOfInnerEle << "\n";
-                  for (auto it = innerElements.begin (); it != innerElements.end(); it++) {
-                    Expr *innerelement = (*it);
-                    if (innerelement->isEvaluatable (varDecl->getASTContext())) {
-                      evaluatable = true;
-                      clang::Expr::EvalResult r;
-                      innerelement->EvaluateAsRValue(r, varDecl->getASTContext());
-                      string eleVal = r.Val.getAsString(varDecl->getASTContext(), e_qualType);
-                      outs() << "innerelement: " << eleVal << "\n";
-                    }
-                  }
+              InitListExpr *innerIle = cast<InitListExpr> (element);
+              getFortranArrayEleASString(innerIle, arrayValues, arrayShapes, evaluatable, it == elements.begin());
+            } else {
+              if (element->isEvaluatable (varDecl->getASTContext())) {
+                    // one dimensional array
+                clang::Expr::EvalResult r;
+                element->EvaluateAsRValue(r, varDecl->getASTContext());
+                string eleVal = r.Val.getAsString(varDecl->getASTContext(), e_qualType);
+
+                if (it == elements.begin()) {
+                      // first element
+                  evaluatable = true;
+                  arrayValues = eleVal;
                 } else {
-                  if (element->isEvaluatable (varDecl->getASTContext())) {
-                    evaluatable = true;
-                    clang::Expr::EvalResult r;
-                    element->EvaluateAsRValue(r, varDecl->getASTContext());
-                    string eleVal = r.Val.getAsString(varDecl->getASTContext(), e_qualType);
-                    outs() << "element: " << eleVal << "\n";
-                  }
+                  arrayValues += ", " + eleVal;
                 }
-              }
-              if (!evaluatable) {
-                string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(varDecl->getSourceRange()), rewriter.getSourceMgr(), LangOptions(), 0);
-                // comment out arrayText
-                std::istringstream in(arrayText);
-                for (std::string line; std::getline(in, line);) {
-                  arrayDecl += "! " + line + "\n";
-                }
-              } else {
-                //INTEGER(C_INT), public :: i
-                //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
+
               }
             }
-          }     
-      }
+          } //<--end iteration
+          if (!evaluatable) {
+            string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(varDecl->getSourceRange()), rewriter.getSourceMgr(), LangOptions(), 0);
+                // comment out arrayText
+            std::istringstream in(arrayText);
+            for (std::string line; std::getline(in, line);) {
+              arrayDecl += "! " + line + "\n";
+            }
+          } else {
+                //INTEGER(C_INT) :: array(2,3) = RESHAPE((/ 1, 2, 3, 4, 5, 6 /), (/2, 3/))
+            arrayDecl += tf.getFortranTypeASString(true)+" :: "+varDecl->getNameAsString()+"("+arrayShapes_fin+")"+" = RESHAPE((/"+arrayValues+"/), (/"+arrayShapes_fin+"/))\n";
+
+          }
+        }
+      }     
+    }
   }
   return arrayDecl;
 };
