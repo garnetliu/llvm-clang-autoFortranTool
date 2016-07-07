@@ -252,8 +252,6 @@ bool CToFTypeFormatter::isDoubleLike(const string input) {
     return false;
   }
   
-
-  
   if (!temp.empty()) {
     found = temp.find_first_of(".eFL()-");
     while (found!=std::string::npos)
@@ -377,46 +375,17 @@ string VarDeclFormatter::getInitValueASString() {
         }
 
       } else {
-        valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
+        valString = "!" + varDecl->evaluateValue()->getAsString(varDecl->getASTContext(), varDecl->getType());
       }
     } else if (varDecl->getType().getTypePtr()->isArrayType()) {
-            // ARRAY --- handled by getFortranArrayDeclASString()
+      // ARRAY --- won't be used here bc it's handled by getFortranArrayDeclASString()
       Expr *exp = varDecl->getInit();
       string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-            // comment out arrayText
+      // comment out arrayText
       std::istringstream in(arrayText);
       for (std::string line; std::getline(in, line);) {
         valString += "! " + line + "\n";
       }
-        // const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
-        // QualType e_qualType = at->getElementType ();
-        // if (e_qualType.getTypePtr()->isCharType()) {
-        //   Expr *exp = varDecl->getInit();
-        //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-        //   valString = arrayText;
-        // } else {
-        //   valString = "!" + varDecl->evaluateValue ()->getAsString(varDecl->getASTContext(), varDecl->getType());
-
-
-        //   }
-
-        //   string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-        //   size_t found = arrayText.find_first_of("{");
-        //   while (found!=string::npos) {
-        //     arrayText[found]='(';
-        //     arrayText.insert(found+1, "/");
-        //     found=arrayText.find_first_of("{",found);
-        //   }     
-        //   found = arrayText.find_first_of("}");
-        //   while (found!=string::npos) {
-        //     arrayText[found]='/';
-        //     arrayText.insert(found+1, ")");
-        //     found=arrayText.find_first_of("}",found);
-        //   }
-        //   valString = arrayText;
-        // }
-
-
     } else {
       valString = "!" + varDecl->evaluateValue()->getAsString(varDecl->getASTContext(), varDecl->getType());
     }
@@ -444,8 +413,6 @@ void VarDeclFormatter::getFortranArrayEleASString(InitListExpr *ile, string &arr
       } else {
         arrayValues += ", " + eleVal;
       }
-      
-      // outs() << "arrayValues: " << arrayValues << "\n";
     } else if (isa<InitListExpr> (innerelement)) {
       InitListExpr *innerile = cast<InitListExpr> (innerelement);
       getFortranArrayEleASString(innerile, arrayValues, arrayShapes, evaluatable, (it == innerElements.begin()) and firstEle);
@@ -538,60 +505,7 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     vd_buffer = rdf.getFortranStructASString();
   } else if (varDecl->getType().getTypePtr()->isArrayType()) {
       // handle initialized numeric array specifically
-
       vd_buffer = getFortranArrayDeclASString();
-      // Expr *exp = varDecl->getInit();
-      // string arrayText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-
-      // string value = getInitValueASString();
-      // CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
-      // if (value.empty()) {
-      //   vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-      // } else if (value[0] == '!') {
-      //   vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
-      // } else {
-      //   // array is not empty
-
-      //   // calculate the size of the array
-      //   const ArrayType *at = varDecl->getType().getTypePtr()->getAsArrayTypeUnsafe ();
-      //   QualType e_qualType = at->getElementType ();
-      //   int typeSize = varDecl->getASTContext().getTypeSizeInChars(varDecl->getType()).getQuantity();
-      //   int elementSize = varDecl->getASTContext().getTypeSizeInChars(e_qualType).getQuantity();
-      //   int array_size = typeSize / elementSize;
-
-      //   // remove  { }  !!!!ONLY for one dimensional array
-      //   string array_args = arrayText.substr(1, arrayText.size()-2);
-
-      //   if (array_args.empty()) {
-      //     vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-      //   } else {
-      //     // calculate the number of elements
-      //     int numOfEle = 0;
-      //     size_t found = array_args.find_first_of(",");
-
-      //     if (found==string::npos) {
-      //       numOfEle = 1;
-      //     } else {
-      //       while (found!=string::npos) {
-      //         numOfEle++;
-      //         found=array_args.find_first_of(",",found+1);
-      //       }
-      //       numOfEle++;            
-      //     }
-
-      //     string identifier = varDecl->getNameAsString() + "(" + to_string(array_size) + ")";
-      //     string arrayIndex = varDecl->getNameAsString() + "_i";
-
-      //     //INTEGER(C_INT), public :: i
-      //     vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + arrayIndex + "\n";
-      //     //INTEGER(C_INT), public :: array(100) = [1, 324, 32423, (0, i=4, 100)]
-      //     vd_buffer += tf.getFortranTypeASString(true) + ", parameter, public :: " + identifier + " = [" + array_args + ",(0,"+ arrayIndex + "="+ to_string(++numOfEle) +"," + to_string(array_size) + ")]\n";
-      //   }
-
-      // }    
-
-
-
   } else if (varDecl->getType().getTypePtr()->isPointerType() and 
     varDecl->getType().getTypePtr()->getPointeeType()->isCharType()) {
     // string declaration
@@ -604,37 +518,6 @@ string VarDeclFormatter::getFortranVarDeclASString() {
     } else {
       vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
     }
-  //   // dig and find the type that this pointer points to
-  //   QualType pointerType = varDecl->getType();
-  //   QualType pointeeType = pointerType.getTypePtr()->getPointeeType();
-  //   QualType *ptrQT = &pointerType;
-  //   QualType *pteQT = &pointeeType;
-  //   while (pteQT->getTypePtr()->isPointerType()) {
-  //     ptrQT = pteQT;
-  //     QualType temp = ptrQT->getTypePtr()->getPointeeType();
-  //     pteQT = &temp;
-  //   }
-  //   CToFTypeFormatter tf(*pteQT, varDecl->getASTContext());
-    
-
-  //   outs() << "this is a pointer variable declaration\n"
-  //   << "name: " << varDecl->getNameAsString() 
-  //   << " pointee type in fortran " << tf.getFortranTypeASString(true) << "\n";
-  //   if (varDecl->hasInit()) {
-  //     Expr *exp =  varDecl->getInit ();
-  //     if (isa<UnaryOperator> (exp)) {
-  //       UnaryOperator *uop = cast<UnaryOperator> (exp);
-  //       outs() << "is a UnaryOperator\n";
-  //       exp = uop->getSubExpr();
-  //       if (isa<DeclRefExpr> (exp)) {
-  //         outs() << "is a DeclRefExpr\n";
-  //       }
-  //     } else {
-  //       outs() << "not a UnaryOperator\n";
-  //     }
-  //     // string expText = Lexer::getSourceText(CharSourceRange::getTokenRange(exp->getExprLoc (), varDecl->getSourceRange().getEnd()), rewriter.getSourceMgr(), LangOptions(), 0);
-  //     // outs() <<"exp name: " << expText << "\n";
-  //   }
   } else {
     string value = getInitValueASString();
     CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
@@ -843,7 +726,6 @@ string FunctionDeclFormatter::getParamsTypesASString() {
       CToFTypeFormatter rtf(returnQType, funcDecl->getASTContext());
       if (!returnQType.getTypePtr()->isVoidType()) {
         if (rtf.isSameType(prev_qt)) {
-          //llvm::outs() << "same type as previous" << (*it)->getOriginalType().getAsString() + "\n";
         } else {
           // check if type is in the vector
           bool add = true;
@@ -855,7 +737,6 @@ string FunctionDeclFormatter::getParamsTypesASString() {
           if (add) {
             paramsType += (", " + rtf.getFortranTypeASString(false));
           }
-          //llvm::outs() << "different type as previous" << (*it)->getOriginalType().getAsString() + "\n";
         }
         prev_qt = returnQType;
         qts.push_back(prev_qt);
@@ -864,7 +745,6 @@ string FunctionDeclFormatter::getParamsTypesASString() {
     } else {
       CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
       if (tf.isSameType(prev_qt)) {
-        //llvm::outs() << "same type as previous" << (*it)->getOriginalType().getAsString() + "\n";
       } else {
         // check if type is in the vector
         bool add = true;
@@ -876,7 +756,6 @@ string FunctionDeclFormatter::getParamsTypesASString() {
         if (add) {
           paramsType += (", " + tf.getFortranTypeASString(false));
         }
-        //llvm::outs() << "different type as previous" << (*it)->getOriginalType().getAsString() + "\n";
       }
       prev_qt = (*it)->getOriginalType();
       qts.push_back(prev_qt);
@@ -1156,9 +1035,10 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
 
   } else if (isa<FunctionDecl> (d)) {
     FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
-    llvm::outs() << "INTERFACE\n" 
-    << fdf.getFortranFunctDeclASString()
-    << "END INTERFACE\n";      
+    allFunctionDecls += fdf.getFortranFunctDeclASString();
+    // llvm::outs() << "INTERFACE\n" 
+    // << fdf.getFortranFunctDeclASString()
+    // << "END INTERFACE\n";      
   } else if (isa<TypedefDecl> (d)) {
     TypedefDecl *tdd = cast<TypedefDecl> (d);
     TypedefDeclFormater tdf(tdd, TheRewriter);
@@ -1193,14 +1073,21 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
 
 
 bool TraverseNodeVisitor::TraverseStmt(Stmt *x) {
-  llvm::outs() << "found statement \n";
-  x->dump();
+  string stmtText;
+  string stmtSrc = Lexer::getSourceText(CharSourceRange::getTokenRange(x->getLocStart(), x->getLocEnd()), TheRewriter.getSourceMgr(), LangOptions(), 0);
+  // comment out stmtText
+  std::istringstream in(stmtSrc);
+  for (std::string line; std::getline(in, line);) {
+    stmtText += "! " + line + "\n";
+  }
+  llvm::outs() << stmtText;
+
   RecursiveASTVisitor<TraverseNodeVisitor>::TraverseStmt(x);
   return true;
 };
 bool TraverseNodeVisitor::TraverseType(QualType x) {
-  llvm::outs() << "found type " << x.getAsString() << "\n";
-  x->dump();
+  string qt_string = "!" + x.getAsString ();
+  llvm::outs() << qt_string;
   RecursiveASTVisitor<TraverseNodeVisitor>::TraverseType(x);
   return true;
 };
@@ -1218,22 +1105,6 @@ public:
   explicit TraverseMacros(CompilerInstance &ci)
   : ci(ci) {}//, SM(ci.getSourceManager()), pp(ci.getPreprocessor()), 
   //Indent(0), FOuts(llvm::outs()) {}
-
-  // void FileChanged(SourceLocation loc, FileChangeReason Reason, SrcMgr::CharacteristicKind, FileID) {
-  //   SourceManager& SM = ci.getSourceManager();
-  //   if (Reason != EnterFile && Reason != ExitFile)
-  //     return;
-  //   if (const FileEntry *FE = SM.getFileEntryForID(SM.getFileID(loc))) {
-  //     if (Reason == EnterFile) {
-  //       FOuts << "Include Tree:";
-  //       FOuts.PadToColumn(13 + Indent * 2);
-  //       FOuts << FE->getName() << "\n";
-  //       Indent++;
-  //     } else if (Reason == ExitFile) {
-  //       Indent--;
-  //     }
-  //   }
-  // };
 
   void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
     MacroFormatter mf(MacroNameTok, MD, ci);
@@ -1253,6 +1124,14 @@ public:
   // will visit all nodes in the AST.
 
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
+
+    // wrap all func decls in a single interface
+    if (!Visitor.allFunctionDecls.empty()) {
+      llvm::outs() << "INTERFACE\n" 
+      << Visitor.allFunctionDecls
+      << "END INTERFACE\n";   
+    }
+
   }
 
 private:

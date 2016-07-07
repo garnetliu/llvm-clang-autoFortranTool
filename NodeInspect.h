@@ -192,6 +192,7 @@ public:
   bool TraverseDecl(Decl *d);
   bool TraverseStmt(Stmt *x);
   bool TraverseType(QualType x);
+  string allFunctionDecls;
 
 private:
   Rewriter &TheRewriter;
