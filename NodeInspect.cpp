@@ -306,6 +306,7 @@ string CToFTypeFormatter::createFortranType(const string macroName, const string
     } else {
       ft_buffer += "!\tINTEGER(C_INT) :: " + type_id + "\n";
     }
+    ft_buffer += "!END TYPE " + macroName+ "\n";
   } else {
     ft_buffer = "TYPE, BIND(C) :: " + macroName+ "\n";
     if (macroVal.find("char") != std::string::npos) {
@@ -317,6 +318,7 @@ string CToFTypeFormatter::createFortranType(const string macroName, const string
     } else {
       ft_buffer += "\tINTEGER(C_INT) :: " + type_id + "\n";
     }
+    ft_buffer += "END TYPE " + macroName+ "\n";
   }
   return ft_buffer;
 };
@@ -497,40 +499,43 @@ string VarDeclFormatter::getFortranArrayDeclASString() {
 
 string VarDeclFormatter::getFortranVarDeclASString() {
   string vd_buffer;
-  if (varDecl->getType().getTypePtr()->isStructureType()) {
-    // structure type
-    RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
-    RecordDeclFormatter rdf(rd, rewriter);
-    rdf.setTagName(varDecl->getNameAsString());
-    vd_buffer = rdf.getFortranStructASString();
-  } else if (varDecl->getType().getTypePtr()->isArrayType()) {
-      // handle initialized numeric array specifically
-      vd_buffer = getFortranArrayDeclASString();
-  } else if (varDecl->getType().getTypePtr()->isPointerType() and 
-    varDecl->getType().getTypePtr()->getPointeeType()->isCharType()) {
-    // string declaration
-    string value = getInitValueASString();
-    CToFTypeFormatter tf(varDecl->getType().getTypePtr()->getPointeeType(), varDecl->getASTContext());
-    if (value.empty()) {
-      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-    } else if (value[0] == '!') {
-      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
+  if (!isInSystemHeader) {
+    if (varDecl->getType().getTypePtr()->isStructureType()) {
+      // structure type
+      RecordDecl *rd = varDecl->getType().getTypePtr()->getAsStructureType()->getDecl();
+      RecordDeclFormatter rdf(rd, rewriter);
+      rdf.setTagName(varDecl->getNameAsString());
+      vd_buffer = rdf.getFortranStructASString();
+    } else if (varDecl->getType().getTypePtr()->isArrayType()) {
+        // handle initialized numeric array specifically
+        vd_buffer = getFortranArrayDeclASString();
+    } else if (varDecl->getType().getTypePtr()->isPointerType() and 
+      varDecl->getType().getTypePtr()->getPointeeType()->isCharType()) {
+      // string declaration
+      string value = getInitValueASString();
+      CToFTypeFormatter tf(varDecl->getType().getTypePtr()->getPointeeType(), varDecl->getASTContext());
+      if (value.empty()) {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+      } else if (value[0] == '!') {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
+      } else {
+        vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
+      }
     } else {
-      vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
-    }
-  } else {
-    string value = getInitValueASString();
-    CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
-    if (value.empty()) {
-      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
-    } else if (value[0] == '!') {
-      vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
-    } else {
-      vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
-    }
+      string value = getInitValueASString();
+      CToFTypeFormatter tf(varDecl->getType(), varDecl->getASTContext());
+      if (value.empty()) {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + "\n";
+      } else if (value[0] == '!') {
+        vd_buffer = tf.getFortranTypeASString(true) + ", public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " " + value + "\n";
+      } else {
+        vd_buffer = tf.getFortranTypeASString(true) + ", parameter, public :: " + tf.getFortranIdASString(varDecl->getNameAsString()) + " = " + value + "\n";
+      }
 
 
+    }
   }
+
   return vd_buffer;
 };
 
@@ -809,10 +814,22 @@ string FunctionDeclFormatter::getParamsNamesASString() {
   return paramsNames;
 };
 
+bool FunctionDeclFormatter::argLocValid() {
+  for (auto it = params.begin(); it != params.end(); it++) {
+    if ((*it)->getSourceRange().getBegin().isValid()) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+  return false;
+};
+
+
 // return the entire function decl in fortran
 string FunctionDeclFormatter::getFortranFunctDeclASString() {
   string fortanFunctDecl;
-  if (!isInSystemHeader) {
+  if (!isInSystemHeader and argLocValid()) {
     string funcType;
     string paramsString = getParamsTypesASString();
     string imports;
@@ -829,8 +846,12 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
       CToFTypeFormatter tf(returnQType, funcDecl->getASTContext());
       funcType = tf.getFortranTypeASString(true) + " FUNCTION";
     }
-
-    fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
+    // if (funcDecl->getNameAsString()[0] == '_') {
+    //   fortanFunctDecl = funcType + " f" + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
+    // } else {
+      fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
+    // }
+    
     fortanFunctDecl += "\t" + imports + "\n";
     fortanFunctDecl += getParamsDeclASString();
     // preserve the function body as comment
@@ -1036,6 +1057,7 @@ bool TraverseNodeVisitor::TraverseDecl(Decl *d) {
   } else if (isa<FunctionDecl> (d)) {
     FunctionDeclFormatter fdf(cast<FunctionDecl> (d), TheRewriter);
     allFunctionDecls += fdf.getFortranFunctDeclASString();
+    
     // llvm::outs() << "INTERFACE\n" 
     // << fdf.getFortranFunctDeclASString()
     // << "END INTERFACE\n";      

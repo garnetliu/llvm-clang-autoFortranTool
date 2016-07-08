@@ -155,6 +155,7 @@ public:
   string getParamsDeclASString();
   string getFortranFunctDeclASString();
   string getParamsTypesASString();
+  bool argLocValid();
 
 private:
   QualType returnQType;
