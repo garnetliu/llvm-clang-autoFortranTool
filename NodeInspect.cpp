@@ -925,6 +925,79 @@ bool MacroFormatter::isFunctionLike() {
   return !isObjectOrFunction;
 };
 
+string MacroFormatter::getFortranMacroFuncASString() {
+
+  string fortranMacro;
+  // remove tabs from macroVal
+  size_t found = macroVal.find_first_of("\t");
+  while (found!=std::string::npos)
+  {
+    macroVal.erase(found, found+1);
+    found=macroVal.find_first_of("\t");
+  }
+
+  if (isFunctionLike() and !isInSystemHeader) {
+        // function macro
+    size_t rParen = macroDef.find(')');
+    string functionBody = macroDef.substr(rParen+1, macroDef.size()-1);
+    if (macroName[0] == '_') {
+      fortranMacro = "! underscore is invalid character name.\n";
+      fortranMacro += "!INTERFACE\n";
+      if (md->getMacroInfo()->arg_empty()) {
+        fortranMacro += "!SUBROUTINE "+ macroName + "() bind (C)\n";
+      } else {
+        fortranMacro += "!SUBROUTINE "+ macroName + "(";
+        for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
+          fortranMacro += (*it)->getName();
+          fortranMacro += ", ";
+        }
+          // erase the redundant colon
+        fortranMacro.erase(fortranMacro.size()-2);
+        fortranMacro += ") bind (C)\n";
+      }
+      if (!functionBody.empty()) {
+        std::istringstream in(functionBody);
+        for (std::string line; std::getline(in, line);) {
+          fortranMacro += "! " + line + "\n";
+        }
+      }
+      fortranMacro += "!END SUBROUTINE " + macroName + "\n";
+      fortranMacro += "!END INTERFACE\n";
+    } else {
+      fortranMacro = "INTERFACE\n";
+      if (md->getMacroInfo()->arg_empty()) {
+        fortranMacro += "SUBROUTINE "+ macroName + "() bind (C)\n";
+      } else {
+        fortranMacro += "SUBROUTINE "+ macroName + "(";
+        for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
+          string arg = (*it)->getName();
+            // remove underscore
+          size_t found = arg.find_first_of("_");
+          while (found!=std::string::npos)
+          {
+            arg.erase(found, found+1);
+            found=arg.find_first_of("_");
+          }
+          fortranMacro += arg;
+          fortranMacro += ", ";
+        }
+          // erase the redundant colon
+        fortranMacro.erase(fortranMacro.size()-2);
+        fortranMacro += ") bind (C)\n";
+      }
+      if (!functionBody.empty()) {
+        std::istringstream in(functionBody);
+        for (std::string line; std::getline(in, line);) {
+          fortranMacro += "! " + line + "\n";
+        }
+      }
+      fortranMacro += "END SUBROUTINE " + macroName + "\n";
+      fortranMacro += "END INTERFACE\n";
+    }
+  }
+};
+
+
 // return the entire macro in fortran
 string MacroFormatter::getFortranMacroASString() {
   string fortranMacro;
@@ -988,64 +1061,64 @@ string MacroFormatter::getFortranMacroASString() {
     }
 
 
-    } else {
-        // function macro
-      size_t rParen = macroDef.find(')');
-      string functionBody = macroDef.substr(rParen+1, macroDef.size()-1);
-      if (macroName[0] == '_') {
-        fortranMacro = "! underscore is invalid character name.\n";
-        fortranMacro += "!INTERFACE\n";
-        if (md->getMacroInfo()->arg_empty()) {
-          fortranMacro += "!SUBROUTINE "+ macroName + "() bind (C)\n";
-        } else {
-          fortranMacro += "!SUBROUTINE "+ macroName + "(";
-          for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
-            fortranMacro += (*it)->getName();
-            fortranMacro += ", ";
-          }
-          // erase the redundant colon
-          fortranMacro.erase(fortranMacro.size()-2);
-          fortranMacro += ") bind (C)\n";
-        }
-        if (!functionBody.empty()) {
-          std::istringstream in(functionBody);
-          for (std::string line; std::getline(in, line);) {
-            fortranMacro += "! " + line + "\n";
-          }
-        }
-        fortranMacro += "!END SUBROUTINE " + macroName + "\n";
-        fortranMacro += "!END INTERFACE\n";
-      } else {
-        fortranMacro = "INTERFACE\n";
-        if (md->getMacroInfo()->arg_empty()) {
-          fortranMacro += "SUBROUTINE "+ macroName + "() bind (C)\n";
-        } else {
-          fortranMacro += "SUBROUTINE "+ macroName + "(";
-          for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
-            string arg = (*it)->getName();
-            // remove underscore
-            size_t found = arg.find_first_of("_");
-            while (found!=std::string::npos)
-            {
-              arg.erase(found, found+1);
-              found=arg.find_first_of("_");
-            }
-            fortranMacro += arg;
-            fortranMacro += ", ";
-          }
-          // erase the redundant colon
-          fortranMacro.erase(fortranMacro.size()-2);
-          fortranMacro += ") bind (C)\n";
-        }
-        if (!functionBody.empty()) {
-          std::istringstream in(functionBody);
-          for (std::string line; std::getline(in, line);) {
-            fortranMacro += "! " + line + "\n";
-          }
-        }
-        fortranMacro += "END SUBROUTINE " + macroName + "\n";
-        fortranMacro += "END INTERFACE\n";
-      }
+    // } else {
+    //     // function macro
+    //   size_t rParen = macroDef.find(')');
+    //   string functionBody = macroDef.substr(rParen+1, macroDef.size()-1);
+    //   if (macroName[0] == '_') {
+    //     fortranMacro = "! underscore is invalid character name.\n";
+    //     fortranMacro += "!INTERFACE\n";
+    //     if (md->getMacroInfo()->arg_empty()) {
+    //       fortranMacro += "!SUBROUTINE "+ macroName + "() bind (C)\n";
+    //     } else {
+    //       fortranMacro += "!SUBROUTINE "+ macroName + "(";
+    //       for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
+    //         fortranMacro += (*it)->getName();
+    //         fortranMacro += ", ";
+    //       }
+    //       // erase the redundant colon
+    //       fortranMacro.erase(fortranMacro.size()-2);
+    //       fortranMacro += ") bind (C)\n";
+    //     }
+    //     if (!functionBody.empty()) {
+    //       std::istringstream in(functionBody);
+    //       for (std::string line; std::getline(in, line);) {
+    //         fortranMacro += "! " + line + "\n";
+    //       }
+    //     }
+    //     fortranMacro += "!END SUBROUTINE " + macroName + "\n";
+    //     fortranMacro += "!END INTERFACE\n";
+    //   } else {
+    //     fortranMacro = "INTERFACE\n";
+    //     if (md->getMacroInfo()->arg_empty()) {
+    //       fortranMacro += "SUBROUTINE "+ macroName + "() bind (C)\n";
+    //     } else {
+    //       fortranMacro += "SUBROUTINE "+ macroName + "(";
+    //       for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
+    //         string arg = (*it)->getName();
+    //         // remove underscore
+    //         size_t found = arg.find_first_of("_");
+    //         while (found!=std::string::npos)
+    //         {
+    //           arg.erase(found, found+1);
+    //           found=arg.find_first_of("_");
+    //         }
+    //         fortranMacro += arg;
+    //         fortranMacro += ", ";
+    //       }
+    //       // erase the redundant colon
+    //       fortranMacro.erase(fortranMacro.size()-2);
+    //       fortranMacro += ") bind (C)\n";
+    //     }
+    //     if (!functionBody.empty()) {
+    //       std::istringstream in(functionBody);
+    //       for (std::string line; std::getline(in, line);) {
+    //         fortranMacro += "! " + line + "\n";
+    //       }
+    //     }
+    //     fortranMacro += "END SUBROUTINE " + macroName + "\n";
+    //     fortranMacro += "END INTERFACE\n";
+    //   }
     }
   }
 
@@ -1139,6 +1212,7 @@ public:
   void MacroDefined (const Token &MacroNameTok, const MacroDirective *MD) {
     MacroFormatter mf(MacroNameTok, MD, ci);
     outs() << mf.getFortranMacroASString();
+    allFunctionDecls += mf.getFortranMacroFuncASString();
   }
 
 };
