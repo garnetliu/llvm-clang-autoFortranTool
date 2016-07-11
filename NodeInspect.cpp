@@ -724,7 +724,9 @@ string FunctionDeclFormatter::getParamsTypesASString() {
       prev_qt = (*it)->getOriginalType();
       qts.push_back(prev_qt);
       CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
-      paramsType = tf.getFortranTypeASString(false);
+      if (tf.getFortranTypeASString(false).find("C_") != std::string::npos) {
+        paramsType = tf.getFortranTypeASString(false);
+      }
       first = false;
 
       // add the return type too
@@ -740,7 +742,10 @@ string FunctionDeclFormatter::getParamsTypesASString() {
             }
           }
           if (add) {
-            paramsType += (", " + rtf.getFortranTypeASString(false));
+            if (rtf.getFortranTypeASString(false).find("C_") != std::string::npos) {
+              paramsType += (", " + rtf.getFortranTypeASString(false));
+            }
+            
           }
         }
         prev_qt = returnQType;
@@ -751,7 +756,7 @@ string FunctionDeclFormatter::getParamsTypesASString() {
       CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
       if (tf.isSameType(prev_qt)) {
       } else {
-        // check if type is in the vector
+          // check if type is in the vector
         bool add = true;
         for (auto v = qts.begin(); v != qts.end(); v++) {
           if (tf.isSameType(*v)) {
@@ -759,15 +764,18 @@ string FunctionDeclFormatter::getParamsTypesASString() {
           }
         }
         if (add) {
-          paramsType += (", " + tf.getFortranTypeASString(false));
+          if (tf.getFortranTypeASString(false).find("C_") != std::string::npos) {
+            paramsType += (", " + tf.getFortranTypeASString(false));
+          }
         }
       }
       prev_qt = (*it)->getOriginalType();
       qts.push_back(prev_qt);
-    }
+    }        
+
   }
   return paramsType;
-}
+};
 
 // for inserting variable decls "<<<type(c_ptr), value :: arg_1>>>"
 string FunctionDeclFormatter::getParamsDeclASString() { 
@@ -822,7 +830,7 @@ bool FunctionDeclFormatter::argLocValid() {
       return false;
     }
   }
-  return false;
+  return true;
 };
 
 
