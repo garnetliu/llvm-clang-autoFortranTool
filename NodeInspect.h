@@ -176,7 +176,7 @@ public:
   bool isObjectLike();
   bool isFunctionLike();
   string getFortranMacroASString();
-  string getFortranMacroFuncASString();
+
 
 private:
   bool isObjectOrFunction;
