@@ -849,10 +849,11 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
     string paramsString = getParamsTypesASString();
     string imports;
     if (!paramsString.empty()) {
-      imports = "USE iso_c_binding, only: " + getParamsTypesASString();
+      imports = "\tUSE iso_c_binding, only: " + getParamsTypesASString() + "\n";
     } else {
-      imports = "USE iso_c_binding";
+      imports = "\tUSE iso_c_binding\n";
     }
+    imports +="\timport\n";
     
     // check if the return type is void or not
     if (returnQType.getTypePtr()->isVoidType()) {
@@ -867,7 +868,7 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
       fortanFunctDecl = funcType + " " + funcDecl->getNameAsString() + "(" + getParamsNamesASString() + ")" + " bind (C)\n";
     // }
     
-    fortanFunctDecl += "\t" + imports + "\n";
+    fortanFunctDecl += imports;
     fortanFunctDecl += getParamsDeclASString();
     // preserve the function body as comment
     if (funcDecl->hasBody()) {
@@ -952,12 +953,13 @@ string MacroFormatter::getFortranMacroASString() {
         
         } else if (CToFTypeFormatter::isIntLike(macroVal)) {
           // invalid chars
-          outs() << "isIntLike macroDef " << macroDef << "\n";
           if (macroVal.find_first_of("UL") != std::string::npos or macroName[0] == '_') {
             fortranMacro = "!INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
           } else if (macroVal.find("x") != std::string::npos) {
             size_t x = macroVal.find_last_of("x");
             string val = macroVal.substr(x+1);
+            val.erase(std::remove(val.begin(), val.end(), ')'), val.end());
+            val.erase(std::remove(val.begin(), val.end(), '('), val.end());
             fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = int(z\'" + val + "\')\n";
           } else {
             fortranMacro = "INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
