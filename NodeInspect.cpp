@@ -552,7 +552,8 @@ TypedefDeclFormater::TypedefDeclFormater(TypedefDecl *t, Rewriter &r) : rewriter
 string TypedefDeclFormater::getFortranTypedefDeclASString() {
   string typdedef_buffer;
   if (isLocValid and !isInSystemHeader) {
-      if (typedefDecl->getTypeSourceInfo()->getType().getTypePtr()->isStructureType()) {
+      if (typedefDecl->getTypeSourceInfo()->getType().getTypePtr()->isStructureType()
+        or typedefDecl->getTypeSourceInfo()->getType().getTypePtr()->isEnumeralType ()) {
         // skip it, since it will be translated in recordecl
       } else {
         // other regular type defs
@@ -589,7 +590,13 @@ string EnumDeclFormatter::getFortranEnumASString() {
       enum_buffer += "\n";
       if (!enumName.empty()) {
         enum_buffer += "\tenumerator " + enumName+"\n";
+      } else {
+        string identifier = enumDecl-> getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
+        if (!identifier.empty()) {
+          enum_buffer += "\tenumerator " + identifier+"\n";
+        }
       }
+
 
       enum_buffer += "END ENUM\n";
   }
