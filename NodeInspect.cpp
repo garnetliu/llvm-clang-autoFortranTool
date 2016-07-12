@@ -214,11 +214,11 @@ bool CToFTypeFormatter::isIntLike(const string input) {
     }
     
     if (!temp.empty()) {
-      found = temp.find_first_of("xUL()-");
+      found = temp.find_first_of("xUL()- ");
       while (found!=std::string::npos)
       {
         temp.erase(found, found+1);
-        found=temp.find_first_of("xUL()-");
+        found=temp.find_first_of("xUL()- ");
       }
       return temp.empty();
     } else {
@@ -241,11 +241,11 @@ bool CToFTypeFormatter::isDoubleLike(const string input) {
   }
   // no digit anymore
   if (!temp.empty()) {
-    size_t doubleF = temp.find_first_of(".eFUL()+-");
+    size_t doubleF = temp.find_first_of(".eFUL()+- ");
     while (doubleF!=std::string::npos)
     {
       temp.erase(doubleF, doubleF+1);
-      doubleF=temp.find_first_of(".eFUL()+-");
+      doubleF=temp.find_first_of(".eFUL()+- ");
     }
     return temp.empty();
   } else {
@@ -253,11 +253,11 @@ bool CToFTypeFormatter::isDoubleLike(const string input) {
   }
   
   if (!temp.empty()) {
-    found = temp.find_first_of(".eFL()-");
+    found = temp.find_first_of(".eFL()- ");
     while (found!=std::string::npos)
     {
       temp.erase(found, found+1);
-      found=temp.find_first_of("xUL()-");
+      found=temp.find_first_of("xUL()- ");
     }
     return temp.empty();
   } else {
@@ -935,15 +935,9 @@ bool MacroFormatter::isFunctionLike() {
 // return the entire macro in fortran
 string MacroFormatter::getFortranMacroASString() {
   string fortranMacro;
-  // remove tabs from macroVal
-  size_t found = macroVal.find_first_of("\t");
-  while (found!=std::string::npos)
-  {
-    macroVal.erase(found, found+1);
-    found=macroVal.find_first_of("\t");
-  }
-
   if (!isInSystemHeader) {
+    macroVal.erase(std::remove(macroVal.begin(), macroVal.end(), '\t'), macroVal.end());
+
     // handle object first
     if (isObjectLike()) {
       // analyze type
@@ -958,6 +952,7 @@ string MacroFormatter::getFortranMacroASString() {
         
         } else if (CToFTypeFormatter::isIntLike(macroVal)) {
           // invalid chars
+          outs() << "isIntLike macroDef " << macroDef << "\n";
           if (macroVal.find_first_of("UL") != std::string::npos or macroName[0] == '_') {
             fortranMacro = "!INTEGER(C_INT), parameter, public :: "+ macroName + " = " + macroVal + "\n";
           } else if (macroVal.find("x") != std::string::npos) {
@@ -1031,12 +1026,13 @@ string MacroFormatter::getFortranMacroASString() {
           for (auto it = md->getMacroInfo()->arg_begin (); it != md->getMacroInfo()->arg_end (); it++) {
             string arg = (*it)->getName();
             // remove underscore
-            size_t found = arg.find_first_of("_");
-            while (found!=std::string::npos)
-            {
-              arg.erase(found, found+1);
-              found=arg.find_first_of("_");
-            }
+            arg.erase(std::remove(arg.begin(), arg.end(), '_'), arg.end());
+            // size_t found = arg.find_first_of("_");
+            // while (found!=std::string::npos)
+            // {
+            //   arg.erase(found, found+1);
+            //   found=arg.find_first_of("_");
+            // }
             fortranMacro += arg;
             fortranMacro += ", ";
           }
