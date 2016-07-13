@@ -750,7 +750,12 @@ string FunctionDeclFormatter::getParamsTypesASString() {
           }
           if (add) {
             if (rtf.getFortranTypeASString(false).find("C_") != std::string::npos) {
-              paramsType += (", " + rtf.getFortranTypeASString(false));
+              if (paramsType.empty()) {
+                paramsType += rtf.getFortranTypeASString(false);
+              } else {
+                paramsType += (", " + rtf.getFortranTypeASString(false));
+              }
+              
             }
             
           }
