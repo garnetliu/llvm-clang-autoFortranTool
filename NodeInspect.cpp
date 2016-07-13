@@ -592,7 +592,7 @@ string EnumDeclFormatter::getFortranEnumASString() {
         enum_buffer += "\tenumerator " + enumName+"\n";
       } else {
         string identifier = enumDecl-> getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
-        if (!identifier.empty()) {
+        if (identifier.find("anonymous at") == string::npos) {
           enum_buffer += "\tenumerator " + identifier+"\n";
         }
       }
