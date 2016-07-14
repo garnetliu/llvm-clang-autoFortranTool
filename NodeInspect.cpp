@@ -266,14 +266,22 @@ bool CToFTypeFormatter::isDoubleLike(const string input) {
 };
 
 bool CToFTypeFormatter::isString(const string input) {
-  if (input[0] == '\"' and input[input.size()-1] =='\"') {
+  string s = input;
+  while (s[0] == ' ') {
+    s = s.substr(1);
+  }
+  if (s[0] == '\"' and s[s.size()-1] =='\"') {
     return true;
   }
   return false;
 };
 
 bool CToFTypeFormatter::isChar(const string input) {
-  if (input[0] == '\'' and input[input.size()-1] =='\'') {
+  string s = input;
+  while (s[0] == ' ') {
+    s = s.substr(1);
+  }
+  if (s[0] == '\'' and s[s.size()-1] =='\'') {
     return true;
   }
   return false;
