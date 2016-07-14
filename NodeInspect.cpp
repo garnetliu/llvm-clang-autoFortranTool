@@ -272,6 +272,13 @@ bool CToFTypeFormatter::isString(const string input) {
   return false;
 };
 
+bool CToFTypeFormatter::isChar(const string input) {
+  if (input[0] == '\'' and input[input.size()-1] =='\'') {
+    return true;
+  }
+  return false;
+};
+
 bool CToFTypeFormatter::isType(const string input) {
   // only support int short long char for now
   if (input == "short" or input == "long" or input == "char" or input == "int" or
@@ -949,6 +956,14 @@ string MacroFormatter::getFortranMacroASString() {
       // analyze type
       if (!macroVal.empty()) {
         if (CToFTypeFormatter::isString(macroVal)) {
+          if (macroName[0] == '_') {
+            fortranMacro = "! underscore is invalid character name\n";
+            fortranMacro += "!CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          } else {
+            fortranMacro = "CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";
+          }
+        
+        } else if (CToFTypeFormatter::isChar(macroVal)) {
           if (macroName[0] == '_') {
             fortranMacro = "! underscore is invalid character name\n";
             fortranMacro += "!CHARACTER("+ to_string(macroVal.size()-2)+"), parameter, public :: "+ macroName + " = " + macroVal + "\n";

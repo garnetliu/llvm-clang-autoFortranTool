@@ -61,6 +61,7 @@ public:
   static bool isDoubleLike(const string input);
   static bool isType(const string input);
   static bool isString(const string input);
+  static bool isChar(const string input);
   static string createFortranType(const string macroName, const string macroVal);
 };
 
