@@ -86,6 +86,7 @@ tools/extra/h2m/h2m.cpp
 5.	Compile the tool
 
 cd ~/clang-llvm/build
+
 ninja
 
 6.	Test the tool
@@ -102,5 +103,6 @@ tools/extra/h2m/h2m.cpp
 2. Compile the tool
 
 cd ~/clang-llvm/build
+
 ninja
 
