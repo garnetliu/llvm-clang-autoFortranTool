@@ -313,25 +313,25 @@ string CToFTypeFormatter::createFortranType(const string macroName, const string
     ft_buffer = "! underscore is invalid character name\n";
     ft_buffer += "!TYPE, BIND(C) :: " + macroName+ "\n";
     if (macroVal.find("char") != std::string::npos) {
-      ft_buffer += "!\tCHARACTER(C_CHAR) :: " + type_id + "\n";
+      ft_buffer += "!    CHARACTER(C_CHAR) :: " + type_id + "\n";
     } else if (macroVal.find("long") != std::string::npos) {
-      ft_buffer += "!\tINTEGER(C_LONG) :: " + type_id + "\n";
+      ft_buffer += "!    INTEGER(C_LONG) :: " + type_id + "\n";
     } else if (macroVal.find("short") != std::string::npos) {
-      ft_buffer += "!\tINTEGER(C_SHORT) :: " + type_id + "\n";
+      ft_buffer += "!    INTEGER(C_SHORT) :: " + type_id + "\n";
     } else {
-      ft_buffer += "!\tINTEGER(C_INT) :: " + type_id + "\n";
+      ft_buffer += "!    INTEGER(C_INT) :: " + type_id + "\n";
     }
     ft_buffer += "!END TYPE " + macroName+ "\n";
   } else {
     ft_buffer = "TYPE, BIND(C) :: " + macroName+ "\n";
     if (macroVal.find("char") != std::string::npos) {
-      ft_buffer += "\tCHARACTER(C_CHAR) :: " + type_id + "\n";
+      ft_buffer += "    CHARACTER(C_CHAR) :: " + type_id + "\n";
     } else if (macroVal.find("long") != std::string::npos) {
-      ft_buffer += "\tINTEGER(C_LONG) :: " + type_id + "\n";
+      ft_buffer += "    INTEGER(C_LONG) :: " + type_id + "\n";
     } else if (macroVal.find("short") != std::string::npos) {
-      ft_buffer += "\tINTEGER(C_SHORT) :: " + type_id + "\n";
+      ft_buffer += "    INTEGER(C_SHORT) :: " + type_id + "\n";
     } else {
-      ft_buffer += "\tINTEGER(C_INT) :: " + type_id + "\n";
+      ft_buffer += "    INTEGER(C_INT) :: " + type_id + "\n";
     }
     ft_buffer += "END TYPE " + macroName+ "\n";
   }
@@ -576,7 +576,7 @@ string TypedefDeclFormater::getFortranTypedefDeclASString() {
         CToFTypeFormatter tf(typeSourceInfo->getType(), typedefDecl->getASTContext());
         string identifier = typedefDecl->getNameAsString();
         typdedef_buffer = "TYPE, BIND(C) :: " + identifier + "\n";
-        typdedef_buffer += "\t"+ tf.getFortranTypeASString(true) + "::" + identifier+"_"+tf.getFortranTypeASString(false) + "\n";
+        typdedef_buffer += "    "+ tf.getFortranTypeASString(true) + "::" + identifier+"_"+tf.getFortranTypeASString(false) + "\n";
         typdedef_buffer += "END TYPE " + identifier + "\n";
       }
     } 
@@ -594,7 +594,7 @@ string EnumDeclFormatter::getFortranEnumASString() {
   if (!isInSystemHeader) {
     string enumName = enumDecl->getNameAsString();
     enum_buffer = "ENUM, BIND( C )\n";
-    enum_buffer += "\tenumerator :: ";
+    enum_buffer += "    enumerator :: ";
     for (auto it = enumDecl->enumerator_begin (); it != enumDecl->enumerator_end (); it++) {
       string constName = (*it)->getNameAsString ();
       int constVal = (*it)->getInitVal ().getExtValue ();
@@ -604,11 +604,11 @@ string EnumDeclFormatter::getFortranEnumASString() {
       enum_buffer.erase(enum_buffer.size()-2);
       enum_buffer += "\n";
       if (!enumName.empty()) {
-        enum_buffer += "\tenumerator " + enumName+"\n";
+        enum_buffer += "    enumerator " + enumName+"\n";
       } else {
         string identifier = enumDecl-> getTypeForDecl ()->getLocallyUnqualifiedSingleStepDesugaredType().getAsString();
         if (identifier.find("anonymous at") == string::npos) {
-          enum_buffer += "\tenumerator " + identifier+"\n";
+          enum_buffer += "    enumerator " + identifier+"\n";
         }
       }
 
@@ -646,7 +646,7 @@ string RecordDeclFormatter::getFortranFields() {
       CToFTypeFormatter tf((*it)->getType(), recordDecl->getASTContext());
       string identifier = tf.getFortranIdASString((*it)->getNameAsString());
 
-      fieldsInFortran += "\t" + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
+      fieldsInFortran += "    " + tf.getFortranTypeASString(true) + " :: " + identifier + "\n";
     }
   }
   return fieldsInFortran;
@@ -817,7 +817,7 @@ string FunctionDeclFormatter::getParamsDeclASString() {
     
     CToFTypeFormatter tf((*it)->getOriginalType(), funcDecl->getASTContext());
     // in some cases parameter doesn't have a name
-    paramsDecl += "\t" + tf.getFortranTypeASString(true) + ", value" + " :: " + pname + "\n"; // need to handle the attribute later
+    paramsDecl += "    " + tf.getFortranTypeASString(true) + ", value" + " :: " + pname + "\n"; // need to handle the attribute later
     index ++;
   }
   return paramsDecl;
@@ -869,11 +869,11 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
     string paramsString = getParamsTypesASString();
     string imports;
     if (!paramsString.empty()) {
-      imports = "\tUSE iso_c_binding, only: " + getParamsTypesASString() + "\n";
+      imports = "    USE iso_c_binding, only: " + getParamsTypesASString() + "\n";
     } else {
-      imports = "\tUSE iso_c_binding\n";
+      imports = "    USE iso_c_binding\n";
     }
-    imports +="\timport\n";
+    imports +="    import\n";
     
     // check if the return type is void or not
     if (returnQType.getTypePtr()->isVoidType()) {
@@ -957,6 +957,7 @@ bool MacroFormatter::isFunctionLike() {
 string MacroFormatter::getFortranMacroASString() {
   string fortranMacro;
   if (!isInSystemHeader) {
+    // remove all tabs
     macroVal.erase(std::remove(macroVal.begin(), macroVal.end(), '\t'), macroVal.end());
 
     // handle object first
