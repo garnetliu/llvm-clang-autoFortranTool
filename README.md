@@ -11,13 +11,16 @@ STEP0: Installation: Obtaining Clang
 
 As Clang is part of the LLVM project, you’ll need to download LLVM’s source code first. Both Clang and LLVM are maintained as Subversion repositories, but we’ll be accessing them through the git mirror. For further information, see the getting started guide.
 
-mkdir ~/clang-llvm && cd ~/clang-llvm git clone 
+mkdir ~/clang-llvm && cd ~/clang-llvm 
 
-http://llvm.org/git/llvm.git cd llvm/tools git clone 
+git clone http://llvm.org/git/llvm.git 
 
-http://llvm.org/git/clang.git cd clang/tools git clone 
+cd llvm/tools git clone http://llvm.org/git/clang.git 
 
-http://llvm.org/git/clang-tools-extra.git extra
+cd clang/tools 
+
+git clone http://llvm.org/git/clang-tools-extra.git extra
+
 
 Next you need to obtain the CMake build system and Ninja build tool. You may already have CMake installed, but current binary versions of CMake aren’t built with Ninja support.
 
