@@ -905,9 +905,9 @@ string FunctionDeclFormatter::getFortranFunctDeclASString() {
 
     }
     if (returnQType.getTypePtr()->isVoidType()) {
-      fortanFunctDecl += "END SUBROUTINE " + funcDecl->getNameAsString() + "\n";   
+      fortanFunctDecl += "END SUBROUTINE " + funcDecl->getNameAsString() + "\n\n";   
     } else {
-      fortanFunctDecl += "END FUNCTION " + funcDecl->getNameAsString() + "\n";
+      fortanFunctDecl += "END FUNCTION " + funcDecl->getNameAsString() + "\n\n";
     }
     
   }
