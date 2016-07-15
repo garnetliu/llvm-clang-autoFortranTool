@@ -1,9 +1,13 @@
 # llvm-clang-autoFortranTool
 
 Tool Building Instruction
+
 Tool name: h2m (header to module)
+
 Reference: http://clang.llvm.org/docs/LibASTMatchersTutorial.html
-Installation: Obtaining Clang
+
+
+STEP0: Installation: Obtaining Clang
 
 As Clang is part of the LLVM project, you’ll need to download LLVM’s source code first. Both Clang and LLVM are maintained as Subversion repositories, but we’ll be accessing them through the git mirror. For further information, see the getting started guide.
 
@@ -48,7 +52,7 @@ Finally, run ninja one last time, and you’re done.
 ninja 
 
 
-Create ClangTool
+STEP1: Create ClangTool
 1.	Create directory for the tool
 
 cd ~/clang-llvm/llvm/tools/clang
@@ -89,4 +93,14 @@ ninja
 ~/clang-llvm/build/bin/h2m /usr/include/pthread.h –-
 Note the two dashes after we specify the source file. The additional options for the compiler are passed after the dashes rather than loading them from a compilation database - there just aren’t any options needed right now.
 
+STEP2: Recompile ClangTool
+1. Modify h2m file
+
+tools/extra/h2m/h2m.h
+tools/extra/h2m/h2m.cpp
+
+2. Compile the tool
+
+cd ~/clang-llvm/build
+ninja
 
